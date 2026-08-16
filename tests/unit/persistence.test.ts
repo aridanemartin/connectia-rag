@@ -508,8 +508,10 @@ describe("IndexingJobRepository", () => {
       indexingJob(version.documentId, version.versionId),
     );
 
+    jobs.leaseNext("worker-a", 1_000);
     const failed = jobs.fail(
       job.id,
+      "worker-a",
       "VECTOR STORE\nUNAVAILABLE",
       `Mensaje seguro\n${"x".repeat(600)}`,
     );

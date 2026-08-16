@@ -3,6 +3,7 @@ import { createReadStream, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { AppError } from "../api/errors.js";
 import type { AppConfig } from "../config/env.js";
+import { OllamaProvider } from "../models/ollama-provider.js";
 import {
   closeDatabase,
   type DatabaseConnection,
@@ -14,11 +15,15 @@ import {
   type IndexingJob,
   IndexingJobRepository,
 } from "../persistence/repositories/indexing-job.repository.js";
+import { QdrantVectorStore } from "../rag/qdrant-vector-store.js";
 import { type Clock, systemClock } from "../shared/clock.js";
+import { IndexingWorker } from "../workers/indexing.worker.js";
 import {
   type IndexingDocumentInput,
   PersistenceConflictError,
 } from "./document.types.js";
+import { PdfExtractor } from "./pdf-extractor.js";
+import { TextChunker } from "./text-chunker.js";
 import {
   RetryingUploadCleaner,
   sweepOrphanUploads,
@@ -179,8 +184,11 @@ export class IndexingService implements IndexingEnqueuer {
 
 export interface IndexingComposition {
   indexingService: IndexingService;
+  jobs: Pick<IndexingJobRepository, "find">;
+  worker: IndexingWorker;
   database: DatabaseConnection;
   sweepOrphans(): Promise<number>;
+  recoverExpiredJobs(): number;
   close(): void;
 }
 
@@ -199,14 +207,33 @@ export function createIndexingComposition(
   try {
     migrate(database);
     const jobs = new IndexingJobRepository(database, clock);
-    const indexingService = new IndexingService(
-      database,
-      new DocumentRepository(database, clock),
-      jobs,
-    );
+    const documents = new DocumentRepository(database, clock);
+    const indexingService = new IndexingService(database, documents, jobs);
     const cleaner = new RetryingUploadCleaner(uploadUnlink);
+    const owner = randomUUID();
+    const extractor = new PdfExtractor();
+    const chunker = new TextChunker();
+    const models = new OllamaProvider(config);
+    const vectorStore = new QdrantVectorStore(config);
+    const worker = new IndexingWorker({
+      jobs,
+      documents,
+      extractor,
+      chunker,
+      models,
+      vectorStore,
+      cleaner,
+      clock,
+      owner,
+      leaseMs: config.INDEXING_LEASE_MS,
+      embedBatchSize: config.INDEXING_EMBED_BATCH_SIZE,
+      pollIntervalMs: config.INDEXING_POLL_INTERVAL_MS,
+      embeddingDimensions: config.EMBEDDING_DIMENSIONS,
+    });
     return {
       indexingService,
+      jobs,
+      worker,
       database,
       sweepOrphans: () =>
         sweepOrphanUploads(
@@ -214,6 +241,7 @@ export function createIndexingComposition(
           new Set(jobs.liveTempFilePaths()),
           cleaner,
         ),
+      recoverExpiredJobs: () => jobs.recoverExpired(),
       close: () => closeDatabase(database),
     };
   } catch (error) {

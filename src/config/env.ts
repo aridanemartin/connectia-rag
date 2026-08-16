@@ -32,6 +32,9 @@ const envSchema = z.object({
   DIAGNOSTICS_ENABLED: booleanFromEnvironment,
   DIAGNOSTICS_TTL_HOURS: z.coerce.number().int().positive().default(24),
   ENABLE_INTERNAL_METRICS: booleanFromEnvironment,
+  INDEXING_EMBED_BATCH_SIZE: z.coerce.number().int().positive().default(16),
+  INDEXING_LEASE_MS: z.coerce.number().int().positive().default(60_000),
+  INDEXING_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1_000),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

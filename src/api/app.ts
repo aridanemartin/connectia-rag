@@ -18,13 +18,17 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
 import { createHealthRouter } from "./routes/health.js";
-import { createIndexingRouter } from "./routes/indexing.js";
+import {
+  createIndexingRouter,
+  type IndexingJobStatusReader,
+} from "./routes/indexing.js";
 
 export interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   readiness: Readiness;
   indexingService: IndexingEnqueuer;
+  indexingJobs: IndexingJobStatusReader;
   uploadUnlink: UploadUnlink;
   uploadFailureReporter: UploadFailureReporter;
   activity: ActivityTracker;
@@ -42,11 +46,16 @@ function unavailableIndexingService(): IndexingEnqueuer {
   };
 }
 
+function unavailableIndexingJobs(): IndexingJobStatusReader {
+  return { find: () => undefined };
+}
+
 export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const config = deps.config ?? loadConfig(process.env);
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const readiness = deps.readiness ?? createDefaultReadiness(config);
   const indexingService = deps.indexingService ?? unavailableIndexingService();
+  const indexingJobs = deps.indexingJobs ?? unavailableIndexingJobs();
   const activity = deps.activity ?? new ActivityTracker();
   const uploadFailureReporter: UploadFailureReporter =
     deps.uploadFailureReporter ??
@@ -81,6 +90,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
     createIndexingRouter(
       config,
       indexingService,
+      indexingJobs,
       deps.uploadUnlink,
       activity,
       uploadFailureReporter,

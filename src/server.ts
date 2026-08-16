@@ -125,10 +125,12 @@ export async function startServer(
   let server: Server | undefined;
   try {
     await composition.sweepOrphans();
+    composition.recoverExpiredJobs();
     const dependencies: Partial<AppDependencies> = {
       activity,
       config,
       indexingService: composition.indexingService,
+      indexingJobs: composition.jobs,
     };
     server = await listen(applicationFactory(dependencies), config.PORT);
   } catch (error) {
@@ -142,6 +144,27 @@ export async function startServer(
   }
 
   console.log(`La API RAG de Connectia escucha en el puerto ${config.PORT}`);
+
+  // The worker loop is not wrapped in activity.run(...): a fresh queued job
+  // is always waiting to be leased at the top of every poll, so the loop
+  // never settles on its own, and treating it as ordinary "active" work
+  // would make activity.waitForIdle() block forever and force every
+  // shutdown onto the abort-on-timeout path (breaking the drain-without-
+  // aborting contract ordinary route work relies on). Instead the worker
+  // reacts to the shared activity.signal for a forced/timed-out shutdown
+  // (matching Task 6's abort budget), and to workerTeardown for the
+  // ordinary graceful path, which always resolves once shutdown decides to
+  // close the composition, so the loop never outlives the database.
+  const workerTeardown = new AbortController();
+  const workerSignal = AbortSignal.any([
+    activity.signal,
+    workerTeardown.signal,
+  ]);
+  composition.worker.start(workerSignal).catch(() => {
+    console.error(
+      "El trabajador de indexación se ha detenido de forma inesperada.",
+    );
+  });
 
   let shutdownPromise: Promise<void> | undefined;
   let signalsRegistered = false;
@@ -177,6 +200,7 @@ export async function startServer(
           throw new ShutdownActivityTimeoutError();
         }
       }
+      workerTeardown.abort();
       closeComposition();
     })();
     return shutdownPromise;

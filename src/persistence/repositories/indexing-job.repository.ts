@@ -258,7 +258,12 @@ export class IndexingJobRepository {
     return this.require(jobId);
   }
 
-  fail(jobId: string, code: string, message: string): IndexingJob {
+  fail(
+    jobId: string,
+    owner: string,
+    code: string,
+    message: string,
+  ): IndexingJob {
     const current = this.require(jobId);
     if (current.status === "failed") {
       return current;
@@ -267,16 +272,47 @@ export class IndexingJobRepository {
       throw new InvalidJobStateError(jobId, "non-completed");
     }
     const now = this.clock.now().toISOString();
-    this.database
+    const result = this.database
       .prepare(
         `
           UPDATE indexing_jobs
           SET status = 'failed', lease_owner = NULL, lease_until = NULL,
               error_code = ?, error_message = ?, updated_at = ?, completed_at = ?
-          WHERE id = ?
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
         `,
       )
-      .run(safeErrorCode(code), safeErrorMessage(message), now, now, jobId);
+      .run(
+        safeErrorCode(code),
+        safeErrorMessage(message),
+        now,
+        now,
+        jobId,
+        owner,
+        now,
+      );
+    if (result.changes !== 1) {
+      throw new LeaseLostError("Indexing", jobId, owner);
+    }
+    return this.require(jobId);
+  }
+
+  release(jobId: string, owner: string): IndexingJob {
+    const now = this.clock.now().toISOString();
+    const result = this.database
+      .prepare(
+        `
+          UPDATE indexing_jobs
+          SET status = 'queued', stage = 'queued', progress = 0,
+              lease_owner = NULL, lease_until = NULL, updated_at = ?
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
+        `,
+      )
+      .run(now, jobId, owner, now);
+    if (result.changes !== 1) {
+      throw new LeaseLostError("Indexing", jobId, owner);
+    }
     return this.require(jobId);
   }
 

@@ -16,6 +16,10 @@ import {
   UploadStorageError,
   type UploadUnlink,
 } from "../../documents/upload-storage.js";
+import type {
+  IndexingJob,
+  IndexingJobStatus,
+} from "../../persistence/repositories/indexing-job.repository.js";
 import {
   ActivityNotAcceptedError,
   type ActivityTracker,
@@ -224,9 +228,42 @@ function mapUploadError(error: unknown): AppError {
   }
 }
 
+export interface IndexingJobStatusReader {
+  find(jobId: string): IndexingJob | undefined;
+}
+
+const jobIdParamSchema = z.uuid();
+
+interface IndexingJobStatusResponse {
+  jobId: string;
+  documentId: string;
+  versionId: string;
+  status: IndexingJobStatus;
+  progress: number;
+  stage: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  completedAt: string | null;
+}
+
+function toStatusResponse(job: IndexingJob): IndexingJobStatusResponse {
+  return {
+    jobId: job.id,
+    documentId: job.documentId,
+    versionId: job.versionId,
+    status: job.status,
+    progress: job.progress,
+    stage: job.stage,
+    errorCode: job.errorCode,
+    errorMessage: job.errorMessage,
+    completedAt: job.completedAt,
+  };
+}
+
 export function createIndexingRouter(
   config: AppConfig,
   indexingService: IndexingEnqueuer,
+  jobStatusReader: IndexingJobStatusReader,
   uploadUnlink?: UploadUnlink,
   activity?: ActivityTracker,
   reportFailure?: UploadFailureReporter,
@@ -311,6 +348,32 @@ export function createIndexingRouter(
         }
         next(error);
       });
+  });
+
+  router.get("/:jobId", (request, response, next) => {
+    const parsedId = jobIdParamSchema.safeParse(request.params.jobId);
+    if (!parsedId.success) {
+      next(
+        new AppError(
+          400,
+          "INDEXING_JOB_ID_INVALID",
+          "El identificador del trabajo no es válido.",
+        ),
+      );
+      return;
+    }
+    const job = jobStatusReader.find(parsedId.data);
+    if (!job) {
+      next(
+        new AppError(
+          404,
+          "INDEXING_JOB_NOT_FOUND",
+          "No se ha encontrado el trabajo de indexación.",
+        ),
+      );
+      return;
+    }
+    response.status(200).json(toStatusResponse(job));
   });
 
   return router;
