@@ -143,30 +143,21 @@ export async function startServer(
     throw error;
   }
 
-  console.log(`La API RAG de Connectia escucha en el puerto ${config.PORT}`);
-
-  // The worker loop is not wrapped in activity.run(...): a fresh queued job
-  // is always waiting to be leased at the top of every poll, so the loop
-  // never settles on its own, and treating it as ordinary "active" work
-  // would make activity.waitForIdle() block forever and force every
-  // shutdown onto the abort-on-timeout path (breaking the drain-without-
-  // aborting contract ordinary route work relies on). Instead the worker
-  // reacts to the shared activity.signal for a forced/timed-out shutdown
-  // (matching Task 6's abort budget), and to workerTeardown for the
-  // ordinary graceful path, which always resolves once shutdown decides to
-  // close the composition, so the loop never outlives the database.
-  const workerTeardown = new AbortController();
-  const workerSignal = AbortSignal.any([
-    activity.signal,
-    workerTeardown.signal,
-  ]);
-  // Captured (not fire-and-forget) so shutdown() can wait for the loop to
-  // actually exit before closing the database — see shutdown() below.
-  const workerLoop = composition.worker.start(workerSignal).catch(() => {
-    console.error(
-      "El trabajador de indexación se ha detenido de forma inesperada.",
-    );
-  });
+  // Signal-handler registration happens immediately once `server` exists,
+  // strictly *before* the "escucha en el puerto" log line below (or any
+  // other observable side effect) — not merely as "the very next statement"
+  // after that line. Signals are not preemptive: process.once() only
+  // protects the process from the instant it is synchronously called, and
+  // nothing guarantees a few-microsecond JS gap always wins a race against
+  // an external process's kill() round-trip under real OS scheduling. The
+  // only fully reliable fix is to make registration a *precondition* of the
+  // observable trigger (the log line) an external watcher could react to,
+  // rather than racing to register after producing it. workerTeardown/
+  // workerLoop are declared here and assigned only after this block, once
+  // the worker loop actually starts below — shutdown() guards both being
+  // possibly still undefined in that residual gap.
+  let workerTeardown: AbortController | undefined;
+  let workerLoop: Promise<void> | undefined;
 
   let shutdownPromise: Promise<void> | undefined;
   let signalsRegistered = false;
@@ -192,11 +183,11 @@ export async function startServer(
           abortGraceMs,
         );
         if (!abortedActivitySettled) {
-          workerTeardown.abort();
+          workerTeardown?.abort();
           void Promise.all([
             serverClosed,
             activity.waitForIdle(),
-            settlesWithin(workerLoop, abortGraceMs),
+            workerLoop ? settlesWithin(workerLoop, abortGraceMs) : true,
           ]).then(() => {
             try {
               closeComposition();
@@ -212,8 +203,13 @@ export async function startServer(
       // whatever job it currently holds at its next safe point (see
       // IndexingWorker.releaseIfStopping) rather than abandoning it for a
       // future recoverExpired() to reclaim after the full lease duration.
-      workerTeardown.abort();
-      await settlesWithin(workerLoop, abortGraceMs);
+      // (workerTeardown/workerLoop may still be undefined if shutdown() is
+      // somehow invoked in the residual gap before they are assigned below
+      // — nothing to tear down or wait for in that case.)
+      workerTeardown?.abort();
+      if (workerLoop) {
+        await settlesWithin(workerLoop, abortGraceMs);
+      }
       closeComposition();
     })();
     return shutdownPromise;
@@ -229,6 +225,31 @@ export async function startServer(
     process.once("SIGTERM", signalHandler);
     signalsRegistered = true;
   }
+
+  console.log(`La API RAG de Connectia escucha en el puerto ${config.PORT}`);
+
+  // The worker loop is not wrapped in activity.run(...): a fresh queued job
+  // is always waiting to be leased at the top of every poll, so the loop
+  // never settles on its own, and treating it as ordinary "active" work
+  // would make activity.waitForIdle() block forever and force every
+  // shutdown onto the abort-on-timeout path (breaking the drain-without-
+  // aborting contract ordinary route work relies on). Instead the worker
+  // reacts to the shared activity.signal for a forced/timed-out shutdown
+  // (matching Task 6's abort budget), and to workerTeardown for the
+  // ordinary graceful path, which always resolves once shutdown decides to
+  // close the composition, so the loop never outlives the database.
+  workerTeardown = new AbortController();
+  const workerSignal = AbortSignal.any([
+    activity.signal,
+    workerTeardown.signal,
+  ]);
+  // Captured (not fire-and-forget) so shutdown() can wait for the loop to
+  // actually exit before closing the database — see shutdown() above.
+  workerLoop = composition.worker.start(workerSignal).catch(() => {
+    console.error(
+      "El trabajador de indexación se ha detenido de forma inesperada.",
+    );
+  });
 
   return { server, composition, activity, shutdown };
 }
