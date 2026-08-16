@@ -1,0 +1,89 @@
+{
+  "schema": "connectia-evaluation-questions/v1",
+  "academicYear": "2026-2027",
+  "questions": [
+    {
+      "id": "matricula-plazo-ordinario",
+      "question": "¿Cuál es el plazo de matrícula ordinaria?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000001"],
+      "expectedPages": [1]
+    },
+    {
+      "id": "becas-plazo-solicitud",
+      "question": "¿Cuál es el plazo para solicitar las becas?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000003"],
+      "expectedPages": [1]
+    },
+    {
+      "id": "comedor-horario",
+      "question": "¿Cuál es el horario del comedor?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000005"],
+      "expectedPages": [1]
+    },
+    {
+      "id": "transporte-abono",
+      "question": "¿Cuál es el precio del abono mensual de transporte?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000006"],
+      "expectedPages": [2]
+    },
+    {
+      "id": "actividades-ajedrez",
+      "question": "¿Qué días se imparte la actividad de ajedrez?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000007"],
+      "expectedPages": [1]
+    },
+    {
+      "id": "contacto-correo",
+      "question": "¿Cuál es el correo electrónico de la secretaría?",
+      "expectedStatus": "found",
+      "expectedDocumentIds": ["00000000-0000-4000-8000-000000000009"],
+      "expectedPages": [1]
+    },
+    {
+      "id": "viaje-fin-curso",
+      "question": "¿Cuál es el precio del viaje de fin de curso?",
+      "expectedStatus": "not_found",
+      "expectedDocumentIds": [],
+      "expectedPages": []
+    },
+    {
+      "id": "homologacion-titulos",
+      "question": "¿Cómo se solicita la homologación de títulos extranjeros?",
+      "expectedStatus": "not_found",
+      "expectedDocumentIds": [],
+      "expectedPages": []
+    },
+    {
+      "id": "seguro-medico",
+      "question": "¿Qué seguro médico privado recomienda el centro?",
+      "expectedStatus": "not_found",
+      "expectedDocumentIds": [],
+      "expectedPages": []
+    },
+    {
+      "id": "inicio-clases",
+      "question": "¿Cuándo empiezan las clases del curso 2026-2027?",
+      "expectedStatus": "ambiguous",
+      "expectedDocumentIds": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "expectedPages": [1, 1]
+    },
+    {
+      "id": "fecha-inicio-curso",
+      "question": "¿En qué fecha comienza el curso?",
+      "expectedStatus": "ambiguous",
+      "expectedDocumentIds": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "expectedPages": [1, 1]
+    }
+  ]
+}

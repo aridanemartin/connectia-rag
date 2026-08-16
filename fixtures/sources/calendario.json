@@ -1,0 +1,36 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Calendario escolar 2026-2027",
+      "paragraphs": [
+        "El curso 2026-2027 comienza el 10 de septiembre de 2026 y finaliza el 22 de junio de 2027.",
+        "El periodo lectivo comprende 178 días distribuidos en tres trimestres.",
+        "Las vacaciones de Navidad abarcan del 23 de diciembre de 2026 al 7 de enero de 2027.",
+        "Las vacaciones de Semana Santa son del 27 de marzo al 4 de abril de 2027."
+      ]
+    },
+    {
+      "heading": "Días no lectivos y festivos",
+      "paragraphs": [
+        "Los días festivos de ámbito nacional son: 12 de octubre, 1 de noviembre, 6 de diciembre, 8 de diciembre, 1 de mayo.",
+        "Las fiestas locales del municipio son el 5 de marzo (fiesta del árbol) y el 15 de mayo (fiesta del centro).",
+        "El centro permanecerá cerrado los días 24 y 31 de diciembre por acuerdo del consejo escolar."
+      ]
+    },
+    {
+      "heading": "Evaluaciones y entregas de notas",
+      "paragraphs": [
+        "La primera evaluación parcial finaliza el 18 de diciembre de 2026.",
+        "La segunda evaluación parcial finaliza el 26 de marzo de 2027.",
+        "La evaluación final ordinaria se celebra en la semana del 14 al 18 de junio de 2027.",
+        "Las notas se publican en el tablón digital del centro a través de https://tablon.iespinarficticio.example.invalid."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Normas de evaluación 2026-2027",
+      "paragraphs": [
+        "Las normas de evaluación del IES Pinar Ficticio se aplican a todas las enseñanzas del centro para el curso 2026-2027.",
+        "La evaluación del aprendizaje del alumnado será continua, formativa e integradora a lo largo del curso.",
+        "Cada curso se organiza en tres evaluaciones parciales que se corresponden con diciembre, marzo y junio."
+      ]
+    },
+    {
+      "heading": "Calificaciones y recuperaciones",
+      "paragraphs": [
+        "Las calificaciones se expresan en la escala numérica de 1 a 10, siendo 5 la nota mínima para aprobar.",
+        "Las notas se publican en el tablón digital del centro la última semana de cada evaluación.",
+        "La nota final se calcula como la media ponderada de las tres evaluaciones parciales.",
+        "El alumnado con evaluación negativa en la evaluación ordinaria podrá presentarse a la prueba extraordinaria de septiembre."
+      ]
+    }
+  ]
+}

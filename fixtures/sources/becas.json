@@ -1,0 +1,27 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Becas y ayudas 2026-2027",
+      "paragraphs": [
+        "La convocatoria de becas y ayudas para el curso 2026-2027 permanece abierta del 1 de septiembre al 15 de octubre de 2026.",
+        "Las solicitudes se presentan exclusivamente por la sede electrónica del ministerio en https://sede.ejemplo.example.invalid.",
+        "Los requisitos principales son: renta familiar inferior a 35000 euros anuales, matrícula completa y asistencia regular."
+      ]
+    },
+    {
+      "heading": "Cuantías y plazos",
+      "paragraphs": [
+        "La beca de transporte cubre hasta 50 euros mensuales durante los meses lectivos.",
+        "La beca de comedor cubre el 60 por ciento del precio del menú diario.",
+        "La resolución provisional se publica antes del 20 de noviembre y el periodo de alegaciones dura diez días hábiles.",
+        "La resolución definitiva se notifica antes del 20 de diciembre de 2026."
+      ]
+    }
+  ]
+}

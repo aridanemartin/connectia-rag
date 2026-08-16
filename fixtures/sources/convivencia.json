@@ -1,0 +1,28 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Normas de convivencia",
+      "paragraphs": [
+        "El presente documento recoge las normas de convivencia del IES Pinar Ficticio para el curso 2026-2027.",
+        "El respeto mutuo entre todos los miembros de la comunidad educativa es el principio fundamental de la convivencia.",
+        "El uso del teléfono móvil está prohibido durante las clases salvo autorización expresa del profesorado.",
+        "Se exige puntualidad en todas las actividades lectivas. Las entradas fuera de hora deben justificarse."
+      ]
+    },
+    {
+      "heading": "Faltas y sanciones",
+      "paragraphs": [
+        "Las faltas se clasifican en leves, graves y muy graves según su naturaleza y reincidencia.",
+        "Las faltas muy graves se comunican a la comisión de convivencia en un plazo máximo de dos días lectivos.",
+        "Las sanciones pueden incluir amonestación escrita, suspensión del derecho de asistencia o cambio de grupo.",
+        "Contra las sanciones graves cabe recurso ante el consejo escolar en un plazo de cinco días hábiles."
+      ]
+    }
+  ]
+}

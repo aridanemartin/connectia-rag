@@ -1,0 +1,27 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Servicio de comedor",
+      "paragraphs": [
+        "El servicio de comedor del IES Pinar Ficticio ofrece menús equilibrados supervisados por el departamento de nutrición.",
+        "El comedor abre de 14:00 a 15:30 de lunes a viernes durante todo el periodo lectivo.",
+        "Los menús semanales se publican en la página web del centro y en el tablón de anuncios del comedor."
+      ]
+    },
+    {
+      "heading": "Precios y bonificaciones",
+      "paragraphs": [
+        "El precio del menú diario es de 5,50 euros e incluye primer plato, segundo plato, postre y pan.",
+        "Las familias numerosas pueden solicitar una bonificación del 25 por ciento sobre el precio del menú.",
+        "La solicitud de bonificación debe presentarse antes del 30 de septiembre acompañada del título de familia numerosa.",
+        "El pago se realiza mediante domiciliación bancaria al inicio de cada mes."
+      ]
+    }
+  ]
+}

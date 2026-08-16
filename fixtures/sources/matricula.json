@@ -1,0 +1,34 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Matrícula 2026-2027",
+      "paragraphs": [
+        "El plazo ordinario de matrícula para el curso 2026-2027 finaliza el 15 de julio de 2026.",
+        "La solicitud se presenta por la sede electrónica del centro en https://sede.iespinarficticio.example.invalid.",
+        "Las clases del curso 2026-2027 comenzarán el 8 de septiembre de 2026.",
+        "El horario de atención al público para la matrícula es de lunes a viernes de 9:00 a 14:00 en la secretaría del centro."
+      ]
+    },
+    {
+      "heading": "Documentación necesaria",
+      "paragraphs": [
+        "Debe adjuntarse el formulario de matrícula firmado por el tutor legal, el documento de identidad del alumnado y el certificado de empadronamiento.",
+        "La documentación se puede entregar en la secretaría del centro o enviarse por correo electrónico a secretaria@iespinarficticio.example.invalid.",
+        "El pago de la tasa de matrícula es de 25,50 euros y se abona mediante transferencia bancaria a la cuenta del centro."
+      ]
+    },
+    {
+      "heading": "Criterios de admisión",
+      "paragraphs": [
+        "La admisión sigue el orden de prioridad establecido por la normativa autonómica: alumnado del centro, hermanos de alumnos matriculados, proximidad del domicilio y renta familiar.",
+        "Las solicitudes fuera de plazo ordinario se admitirán con carácter extraordinario hasta el 31 de agosto siempre que queden plazas disponibles."
+      ]
+    }
+  ]
+}
