@@ -2,7 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { PdfExtractor } from "../../src/documents/pdf-extractor.js";
+import {
+  normalizeExtractedText,
+  PdfExtractor,
+} from "../../src/documents/pdf-extractor.js";
 import { TextChunker } from "../../src/documents/text-chunker.js";
 import { createTestPdf } from "../support/create-test-pdf.js";
 
@@ -14,6 +17,11 @@ const UNICODE_WHITE_SPACE_CODE_POINTS =
   "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A" +
   "\u2028\u2029\u202F\u205F\u3000";
 const TWENTY_SEMANTIC_UNICODE_CODE_POINTS = "áéíóúñüÁÉÍÓÚÑÜçÇóóó🎓";
+const INTERRUPTING_NOISE = [
+  { name: "BOM", value: "\uFEFF" },
+  { name: "Cc", value: "\u0007" },
+  { name: "Cf", value: "\u200B" },
+] as const;
 const metadata = {
   documentId: DOCUMENT_ID,
   versionId: VERSION_ID,
@@ -42,6 +50,33 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+describe("normalizeExtractedText", () => {
+  it.each(INTERRUPTING_NOISE)(
+    "is final-NFC and idempotent after removing $name noise from decomposed accents",
+    ({ value }) => {
+      const input = `a${value}\u0301`.repeat(10);
+
+      const normalized = normalizeExtractedText(input);
+
+      expect(normalized).toBe("á".repeat(10));
+      expect(normalized).toBe(normalized.normalize("NFC"));
+      expect(normalizeExtractedText(normalized)).toBe(normalized);
+    },
+  );
+
+  it("is idempotent for ordinary Spanish text and Unicode line structure", () => {
+    const input =
+      "  MATRÍCULA\u0085Informacio\u0301n\tacadémica.\u2028Continúa.\u2029Segundo párrafo.  ";
+    const expected =
+      "MATRÍCULA\nInformación académica.\nContinúa.\n\nSegundo párrafo.";
+
+    const normalized = normalizeExtractedText(input);
+
+    expect(normalized).toBe(expected);
+    expect(normalizeExtractedText(normalized)).toBe(expected);
+  });
 });
 
 describe("PdfExtractor", () => {
@@ -287,6 +322,46 @@ describe("PdfExtractor", () => {
       { page: 1, text: TWENTY_SEMANTIC_UNICODE_CODE_POINTS },
     ]);
   });
+
+  it.each(INTERRUPTING_NOISE)(
+    "rejects 19 canonical Spanish characters interrupted by $name noise",
+    async ({ value }) => {
+      const path = await createMagicStub();
+      const extractor = new PdfExtractor(() => ({
+        load: async () => [
+          {
+            pageContent: `a${value}\u0301`.repeat(19),
+            metadata: { loc: { pageNumber: 1 } },
+          },
+        ],
+      }));
+
+      await expect(extractor.extract(path)).rejects.toMatchObject({
+        code: "PDF_TEXT_NOT_FOUND",
+      });
+    },
+  );
+
+  it.each(INTERRUPTING_NOISE)(
+    "accepts exactly 20 canonical Spanish characters interrupted by $name noise",
+    async ({ value }) => {
+      const path = await createMagicStub();
+      const extractor = new PdfExtractor(() => ({
+        load: async () => [
+          {
+            pageContent: `a${value}\u0301`.repeat(20),
+            metadata: { loc: { pageNumber: 1 } },
+          },
+        ],
+      }));
+
+      const pages = await extractor.extract(path);
+      const chunks = await new TextChunker().split({ ...metadata, pages });
+
+      expect(pages).toEqual([{ page: 1, text: "á".repeat(20) }]);
+      expect(chunks.map(({ text }) => text)).toEqual(["á".repeat(20)]);
+    },
+  );
 });
 
 describe("TextChunker", () => {
@@ -386,6 +461,21 @@ describe("TextChunker", () => {
       ]),
     );
     expect(chunks[0]?.pointId).toBe("9d6b37a8-637a-546e-ae90-1b4edf9f4646");
+  });
+
+  it("keeps content hashes stable for canonically equivalent noise-interrupted text", async () => {
+    const chunker = new TextChunker();
+
+    const canonical = await chunker.split({
+      ...metadata,
+      pages: [{ page: 1, text: "á".repeat(20) }],
+    });
+    const interrupted = await chunker.split({
+      ...metadata,
+      pages: [{ page: 1, text: "a\uFEFF\u0301".repeat(20) }],
+    });
+
+    expect(interrupted).toEqual(canonical);
   });
 
   it("keeps hashes stable but changes every point ID when the version ID changes", async () => {

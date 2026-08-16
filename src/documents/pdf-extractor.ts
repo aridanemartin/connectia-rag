@@ -58,11 +58,11 @@ export class PdfProcessingError extends Error {
  * separators become line breaks, paragraph separators become paragraph breaks,
  * and other Unicode White_Space is collapsed horizontally. U+FEFF is always
  * removed as parser/encoding noise; remaining control and format code points are
- * also discarded after structural line separators have been preserved.
+ * also discarded after structural line separators have been preserved. NFC is
+ * applied last so eligibility, chunking, and hashing share one idempotent form.
  */
 export function normalizeExtractedText(value: string): string {
   return value
-    .normalize("NFC")
     .split(BYTE_ORDER_MARK)
     .join("")
     .replace(/\r\n?/gu, "\n")
@@ -81,7 +81,8 @@ export function normalizeExtractedText(value: string): string {
     )
     .join("\n")
     .replace(/\n{3,}/gu, "\n\n")
-    .trim();
+    .trim()
+    .normalize("NFC");
 }
 
 function isExtractableCharacter(character: string): boolean {
