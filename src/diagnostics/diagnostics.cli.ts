@@ -5,11 +5,7 @@ import { migrate } from "../persistence/migrate.js";
 import { DiagnosticsRepository } from "../persistence/repositories/diagnostics.repository.js";
 import { systemClock } from "../shared/clock.js";
 import { DiagnosticsService } from "./diagnostics.service.js";
-
-export interface DiagnosticsCliIO {
-  write(line: string): void;
-  error(line: string): void;
-}
+import type { DiagnosticsCliIO } from "./diagnostics.types.js";
 
 function defaultCliIO(): DiagnosticsCliIO {
   return {

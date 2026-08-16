@@ -1,19 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { DiagnosticsRepository } from "../persistence/repositories/diagnostics.repository.js";
 import type { Clock } from "../shared/clock.js";
+import type { DiagnosticsRecorder } from "../shared/shared.types.js";
 import type {
   DiagnosticEntry,
   DiagnosticRecordInput,
+  DiagnosticsServiceOptions,
 } from "./diagnostics.types.js";
 
-export interface DiagnosticsServiceOptions {
-  repository: DiagnosticsRepository;
-  enabled: boolean;
-  ttlHours: number;
-  clock: Clock;
-}
-
-export class DiagnosticsService {
+export class DiagnosticsService implements DiagnosticsRecorder {
   private readonly repository: DiagnosticsRepository;
   private readonly enabled: boolean;
   private readonly ttlMs: number;

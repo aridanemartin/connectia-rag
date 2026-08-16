@@ -1,4 +1,5 @@
 import type { ModelProvider } from "../models/model-provider.js";
+import type { DiagnosticsRecorder } from "../shared/shared.types.js";
 import { type AnswerDecision, answerDecisionSchema } from "./answer.schema.js";
 import {
   buildCitations,
@@ -7,15 +8,6 @@ import {
 } from "./citation.service.js";
 import { GROUNDING_SYSTEM_PROMPT } from "./prompt.js";
 import type { VectorStore } from "./vector-store.js";
-
-export interface DiagnosticsRecorder {
-  record(entry: {
-    requestId: string;
-    question: string;
-    answer: string | null;
-    retrievedChunkIds: string[];
-  }): Promise<void>;
-}
 
 export interface QuestionResponse {
   status: "found" | "not_found" | "ambiguous";
