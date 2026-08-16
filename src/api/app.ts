@@ -12,18 +12,24 @@ import {
   createDefaultReadiness,
   type Readiness,
 } from "../health/readiness.service.js";
+import type { QuestionService } from "../rag/question.service.js";
 import { ActivityTracker } from "../shared/activity-tracker.js";
 import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
+import {
+  createCompatibilityRouter,
+  createHealthCompatibilityRouter,
+} from "./routes/compatibility.js";
 import { createDocumentsRouter } from "./routes/documents.js";
 import { createHealthRouter } from "./routes/health.js";
 import {
   createIndexingRouter,
   type IndexingJobStatusReader,
 } from "./routes/indexing.js";
+import { createQuestionsRouter } from "./routes/questions.js";
 
 export interface AppDependencies {
   config: AppConfig;
@@ -32,6 +38,7 @@ export interface AppDependencies {
   indexingService: IndexingEnqueuer;
   indexingJobs: IndexingJobStatusReader;
   lifecycle: LifecycleReader;
+  questionService: Pick<QuestionService, "ask">;
   uploadUnlink: UploadUnlink;
   uploadFailureReporter: UploadFailureReporter;
   activity: ActivityTracker;
@@ -70,7 +77,20 @@ function unavailableLifecycle(): LifecycleReader {
       );
     },
     allowedActiveVersions: () => [],
+    allowedActiveVersionsByDocumentIds: () => [],
     allowedPreviewVersions: () => [],
+  };
+}
+
+function unavailableQuestionService(): Pick<QuestionService, "ask"> {
+  return {
+    ask: async () => {
+      throw new AppError(
+        503,
+        "QUESTION_UNAVAILABLE",
+        "El servicio de preguntas no está disponible.",
+      );
+    },
   };
 }
 
@@ -81,6 +101,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const indexingService = deps.indexingService ?? unavailableIndexingService();
   const indexingJobs = deps.indexingJobs ?? unavailableIndexingJobs();
   const lifecycle = deps.lifecycle ?? unavailableLifecycle();
+  const questionService = deps.questionService ?? unavailableQuestionService();
   const activity = deps.activity ?? new ActivityTracker();
   const uploadFailureReporter: UploadFailureReporter =
     deps.uploadFailureReporter ??
@@ -95,6 +116,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
 
   app.use(requestId);
+  app.use(express.json());
   app.use(
     pinoHttp<Request, Response>({
       logger,
@@ -109,6 +131,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
     }),
   );
   app.use("/health", createHealthRouter(readiness));
+  app.use("/health", createHealthCompatibilityRouter());
   app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
@@ -121,7 +144,22 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
       uploadFailureReporter,
     ),
   );
-  app.use("/api/v1/documents", createDocumentsRouter(lifecycle, activity));
+  app.use(
+    "/api/v1/documents",
+    createDocumentsRouter(lifecycle, activity, questionService),
+  );
+  app.use(
+    "/api/v1/questions",
+    createQuestionsRouter(questionService, lifecycle, activity),
+  );
+  app.use(
+    createCompatibilityRouter(
+      lifecycle,
+      questionService,
+      indexingJobs,
+      activity,
+    ),
+  );
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);
   });

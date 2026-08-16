@@ -133,6 +133,7 @@ export async function startServer(
       indexingService: composition.indexingService,
       indexingJobs: composition.jobs,
       lifecycle: composition.lifecycle,
+      questionService: composition.questionService,
     };
     server = await listen(applicationFactory(dependencies), config.PORT);
   } catch (error) {

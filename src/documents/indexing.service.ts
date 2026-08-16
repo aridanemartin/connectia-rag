@@ -16,7 +16,9 @@ import {
   type IndexingJob,
   IndexingJobRepository,
 } from "../persistence/repositories/indexing-job.repository.js";
+import { GenerationGate } from "../rag/generation-gate.js";
 import { QdrantVectorStore } from "../rag/qdrant-vector-store.js";
+import { QuestionService } from "../rag/question.service.js";
 import { type Clock, systemClock } from "../shared/clock.js";
 import { CleanupWorker } from "../workers/cleanup.worker.js";
 import { IndexingWorker } from "../workers/indexing.worker.js";
@@ -191,6 +193,7 @@ export interface IndexingComposition {
   worker: IndexingWorker;
   lifecycle: LifecycleService;
   cleanupWorker: CleanupWorker;
+  questionService: QuestionService;
   database: DatabaseConnection;
   sweepOrphans(): Promise<number>;
   recoverExpiredJobs(): number;
@@ -247,12 +250,24 @@ export function createIndexingComposition(
       leaseMs: config.INDEXING_LEASE_MS,
       pollIntervalMs: config.INDEXING_POLL_INTERVAL_MS,
     });
+    const questionService = new QuestionService({
+      model: models,
+      vectorStore,
+      gate: new GenerationGate({
+        concurrency: config.MAX_ACTIVE_GENERATIONS,
+        maxQueued: config.MAX_QUEUED_GENERATIONS,
+        timeoutMs: config.QUESTION_QUEUE_TIMEOUT_MS,
+      }),
+      topK: config.RAG_TOP_K,
+      scoreThreshold: config.RAG_SCORE_THRESHOLD,
+    });
     return {
       indexingService,
       jobs,
       worker,
       lifecycle,
       cleanupWorker,
+      questionService,
       database,
       sweepOrphans: () =>
         sweepOrphanUploads(

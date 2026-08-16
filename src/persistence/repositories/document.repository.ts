@@ -276,6 +276,21 @@ export class DocumentRepository {
       .map((row) => row.id);
   }
 
+  activeVersionIdsByDocumentIds(documentIds: readonly string[]): string[] {
+    const allowedDocuments = new Set(documentIds);
+    return this.database
+      .prepare<[], { id: string; document_id: string }>(
+        `
+          SELECT id, document_id FROM document_versions
+          WHERE state = 'ACTIVE'
+          ORDER BY id
+        `,
+      )
+      .all()
+      .filter((row) => allowedDocuments.has(row.document_id))
+      .map((row) => row.id);
+  }
+
   previewVersionIds(documentId: string, versionId: string): string[] {
     const candidate = this.requireOwnedVersion(documentId, versionId);
     if (candidate.state !== "READY" && candidate.state !== "ACTIVE") {

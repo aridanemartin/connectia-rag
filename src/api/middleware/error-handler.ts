@@ -1,6 +1,38 @@
 import type { ErrorRequestHandler } from "express";
 import { AppError } from "../errors.js";
 
+interface BodyParserError extends Error {
+  type?: string;
+  status?: number;
+}
+
+function mapBodyParserError(error: BodyParserError): AppError | undefined {
+  if (error.type === "entity.parse.failed") {
+    return new AppError(
+      400,
+      "BODY_INVALID",
+      "El cuerpo de la solicitud no es válido.",
+    );
+  }
+  if (error.type === "entity.too.large") {
+    return new AppError(
+      413,
+      "BODY_TOO_LARGE",
+      "El cuerpo de la solicitud es demasiado grande.",
+    );
+  }
+  if (error.status === 400 || error.status === 413) {
+    return new AppError(
+      error.status,
+      error.status === 400 ? "BODY_INVALID" : "BODY_TOO_LARGE",
+      error.status === 400
+        ? "El cuerpo de la solicitud no es válido."
+        : "El cuerpo de la solicitud es demasiado grande.",
+    );
+  }
+  return undefined;
+}
+
 export const errorHandler: ErrorRequestHandler = (
   error: unknown,
   request,
@@ -10,7 +42,8 @@ export const errorHandler: ErrorRequestHandler = (
   const safeError =
     error instanceof AppError
       ? error
-      : new AppError(500, "INTERNAL_ERROR", "Ha ocurrido un error interno.");
+      : (mapBodyParserError(error as BodyParserError) ??
+        new AppError(500, "INTERNAL_ERROR", "Ha ocurrido un error interno."));
   const body = {
     code: safeError.code,
     message: safeError.message,
