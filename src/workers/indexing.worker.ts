@@ -11,7 +11,10 @@ import {
 } from "../documents/text-chunker.js";
 import type { RetryingUploadCleaner } from "../documents/upload-storage.js";
 import type { ModelProvider } from "../models/model-provider.js";
-import type { IndexingJob } from "../persistence/repositories/indexing-job.repository.js";
+import {
+  type IndexingJob,
+  LeaseLostError,
+} from "../persistence/repositories/indexing-job.repository.js";
 import { VectorStoreError } from "../rag/qdrant-vector-store.js";
 import type { ChunkPayload, VectorStore } from "../rag/vector-store.js";
 import type { Clock } from "../shared/clock.js";
@@ -137,10 +140,6 @@ function classifyTransient(error: unknown, depth: number): boolean {
   return false;
 }
 
-function isLeaseLostError(error: unknown): boolean {
-  return error instanceof Error && error.name === "LeaseLostError";
-}
-
 function chunkPayload(chunk: Chunk): ChunkPayload {
   return {
     documentId: chunk.documentId,
@@ -165,10 +164,18 @@ export class IndexingWorker {
     if (!job) {
       return "idle";
     }
+    // Only remove the temp file once *this* worker has recorded the job's
+    // own terminal outcome (completed/failed). If the job was released back
+    // to `queued` (graceful shutdown) or another owner now holds its lease
+    // (LeaseLostError), the file is still needed for a future attempt — by
+    // this process or another — and must not be deleted out from under it.
+    let reachedOwnTerminalState = false;
     try {
-      await this.process(job);
+      reachedOwnTerminalState = await this.process(job);
     } finally {
-      await this.deps.cleaner.remove(job.tempFilePath).catch(() => undefined);
+      if (reachedOwnTerminalState) {
+        await this.deps.cleaner.remove(job.tempFilePath).catch(() => undefined);
+      }
     }
     return "processed";
   }
@@ -193,9 +200,21 @@ export class IndexingWorker {
     }
   }
 
-  private async process(job: IndexingJob): Promise<void> {
+  /**
+   * Processes the leased job to a terminal outcome and returns whether
+   * *this* worker actually recorded that terminal outcome (safe to delete
+   * the temp file). At each stage boundary — a natural safe point between
+   * discrete units of work — it checks whether shutdown has been requested
+   * and, if so, proactively releases the lease back to `queued` instead of
+   * abandoning it for `recoverExpired()` to reclaim after the full lease
+   * duration elapses.
+   */
+  private async process(job: IndexingJob): Promise<boolean> {
     let stage: ProcessingStage = "extracting";
     try {
+      if (this.releaseIfStopping(job)) {
+        return false;
+      }
       const version = this.deps.documents.findVersion(job.versionId);
       if (!version) {
         throw new Error("La versión del documento no existe.");
@@ -209,6 +228,9 @@ export class IndexingWorker {
       );
       const pages = await this.deps.extractor.extract(job.tempFilePath);
 
+      if (this.releaseIfStopping(job)) {
+        return false;
+      }
       stage = "chunking";
       this.deps.jobs.progress(
         job.id,
@@ -224,6 +246,9 @@ export class IndexingWorker {
         pages,
       });
 
+      if (this.releaseIfStopping(job)) {
+        return false;
+      }
       stage = "embedding";
       this.deps.jobs.progress(
         job.id,
@@ -233,6 +258,9 @@ export class IndexingWorker {
       );
       const vectors = await this.embedInBatches(chunks);
 
+      if (this.releaseIfStopping(job)) {
+        return false;
+      }
       stage = "storing";
       this.deps.jobs.progress(
         job.id,
@@ -255,6 +283,9 @@ export class IndexingWorker {
         isTransientDependencyError,
       );
 
+      if (this.releaseIfStopping(job)) {
+        return false;
+      }
       stage = "finalizing";
       this.deps.jobs.progress(
         job.id,
@@ -265,26 +296,54 @@ export class IndexingWorker {
       this.deps.documents.markReady(job.versionId);
 
       this.deps.jobs.complete(job.id, this.deps.owner);
+      return true;
     } catch (error) {
-      if (isLeaseLostError(error)) {
+      if (error instanceof LeaseLostError) {
         // Another owner already reclaimed this job's fate; attempt no
-        // further mutation and let recoverExpired() sort it out later.
-        return;
+        // further mutation and let that owner (or a future recoverExpired())
+        // sort it out. The temp file is theirs to manage now.
+        return false;
       }
       try {
-        await this.handleTerminalFailure(job, error, stage);
+        return await this.handleTerminalFailure(job, error, stage);
       } catch {
         // A job we already tried and failed to fail must never crash the
-        // loop.
+        // loop, and its terminal state is unknown — do not delete the file.
+        return false;
       }
     }
   }
 
+  /**
+   * Safe-point check: if shutdown has been requested, proactively hand the
+   * lease back via `release()` instead of continuing into the next stage.
+   * Returns `true` when the caller must stop processing this job.
+   */
+  private releaseIfStopping(job: IndexingJob): boolean {
+    if (!this.signal.aborted) {
+      return false;
+    }
+    try {
+      this.deps.jobs.release(job.id, this.deps.owner);
+    } catch (error) {
+      if (!(error instanceof LeaseLostError)) {
+        throw error;
+      }
+      // Another owner already took it; nothing more for us to do.
+    }
+    return true;
+  }
+
+  /**
+   * Returns whether *this* worker recorded the job's terminal `failed`
+   * state (safe to delete the temp file), or `false` when the lease was
+   * lost while trying to record it (another owner may still need the file).
+   */
   private async handleTerminalFailure(
     job: IndexingJob,
     error: unknown,
     stage: ProcessingStage,
-  ): Promise<void> {
+  ): Promise<boolean> {
     await this.deps.vectorStore
       .deleteVersion(job.versionId)
       .catch(() => undefined);
@@ -297,10 +356,12 @@ export class IndexingWorker {
     const { code, message } = this.classifyError(error, stage);
     try {
       this.deps.jobs.fail(job.id, this.deps.owner, code, message);
+      return true;
     } catch (failError) {
-      if (!isLeaseLostError(failError)) {
+      if (!(failError instanceof LeaseLostError)) {
         throw failError;
       }
+      return false;
     }
   }
 

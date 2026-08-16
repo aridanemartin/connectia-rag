@@ -266,4 +266,73 @@ describe("production indexing activity shutdown", () => {
     expect(context.closeCalls()).toBe(1);
     expect(await readdir(context.uploadDirectory)).toEqual([]);
   });
+
+  it("waits for the worker loop to exit before closing the database", async () => {
+    const root = await mkdtemp(join(tmpdir(), "connectia-server-worker-"));
+    roots.push(root);
+    const uploadDirectory = join(root, "uploads");
+    const config = {
+      ...loadConfig({
+        AUTH_TOKEN,
+        DATABASE_PATH: join(root, "connectia.sqlite"),
+        TEMP_DIR: uploadDirectory,
+      }),
+      PORT: 0,
+    };
+    const owned = createIndexingComposition(config);
+    const workerRelease = deferred<void>();
+    let workerSettled = false;
+    let closedBeforeWorkerSettled = false;
+    let closeCalls = 0;
+    const composition: IndexingComposition = {
+      ...owned,
+      worker: {
+        start: (signal: AbortSignal) =>
+          new Promise<void>((resolveStart) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                void workerRelease.promise.then(() => {
+                  workerSettled = true;
+                  resolveStart();
+                });
+              },
+              { once: true },
+            );
+          }),
+      } as IndexingComposition["worker"],
+      close: () => {
+        closeCalls += 1;
+        if (!workerSettled) {
+          closedBeforeWorkerSettled = true;
+        }
+        owned.close();
+      },
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const runtime = await startServer({
+      config,
+      createComposition: () => composition,
+      createApplication: (dependencies) =>
+        createApp({
+          ...dependencies,
+          logger: pino({ level: "silent" }),
+        }),
+      registerSignalHandlers: false,
+      shutdownTimeoutMs: 500,
+      shutdownAbortGraceMs: 500,
+    });
+
+    const shutdownPromise = runtime.shutdown();
+    // Give shutdown() a chance to reach the point where it would close the
+    // composition, without our fake worker having settled yet.
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    expect(closeCalls).toBe(0);
+    workerRelease.resolve();
+    await shutdownPromise;
+
+    expect(closeCalls).toBe(1);
+    expect(closedBeforeWorkerSettled).toBe(false);
+  });
 });

@@ -397,7 +397,7 @@ class InvalidJobStateError extends Error {
   }
 }
 
-class LeaseLostError extends Error {
+export class LeaseLostError extends Error {
   constructor(kind: string, jobId: string, owner: string) {
     super(`${kind} job ${jobId} does not have an active lease for ${owner}`);
     this.name = "LeaseLostError";

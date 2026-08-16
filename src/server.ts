@@ -160,7 +160,9 @@ export async function startServer(
     activity.signal,
     workerTeardown.signal,
   ]);
-  composition.worker.start(workerSignal).catch(() => {
+  // Captured (not fire-and-forget) so shutdown() can wait for the loop to
+  // actually exit before closing the database — see shutdown() below.
+  const workerLoop = composition.worker.start(workerSignal).catch(() => {
     console.error(
       "El trabajador de indexación se ha detenido de forma inesperada.",
     );
@@ -190,7 +192,12 @@ export async function startServer(
           abortGraceMs,
         );
         if (!abortedActivitySettled) {
-          void Promise.all([serverClosed, activity.waitForIdle()]).then(() => {
+          workerTeardown.abort();
+          void Promise.all([
+            serverClosed,
+            activity.waitForIdle(),
+            settlesWithin(workerLoop, abortGraceMs),
+          ]).then(() => {
             try {
               closeComposition();
             } catch {
@@ -200,7 +207,13 @@ export async function startServer(
           throw new ShutdownActivityTimeoutError();
         }
       }
+      // Ask the worker to stop and, bounded by abortGraceMs, actually wait
+      // for its loop to exit before touching the database — releasing
+      // whatever job it currently holds at its next safe point (see
+      // IndexingWorker.releaseIfStopping) rather than abandoning it for a
+      // future recoverExpired() to reclaim after the full lease duration.
       workerTeardown.abort();
+      await settlesWithin(workerLoop, abortGraceMs);
       closeComposition();
     })();
     return shutdownPromise;

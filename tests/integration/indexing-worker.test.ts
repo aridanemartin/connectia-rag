@@ -362,4 +362,108 @@ describe("IndexingWorker", () => {
       expect((batch as string[]).length).toBeLessThanOrEqual(2);
     }
   });
+
+  it("fails with EMBEDDING_GENERATION_FAILED when a non-transient error occurs during embedding", async () => {
+    const ctx = await setup();
+    const pdfPath = await createTestPdf(ctx.root, [
+      ["MATRÍCULA", "Contenido de prueba con líneas suficientes para indexar."],
+    ]);
+    const { job, versionId } = await enqueueJob(ctx, pdfPath);
+    ctx.models.embedDocuments.mockRejectedValueOnce(
+      new Error("private embedding backend detail"),
+    );
+
+    const outcome = await ctx.worker.runOnce();
+
+    expect(outcome).toBe("processed");
+    const finalJob = ctx.jobs.find(job.id);
+    expect(finalJob?.status).toBe("failed");
+    expect(finalJob?.errorCode).toBe("EMBEDDING_GENERATION_FAILED");
+    expect(finalJob?.errorMessage).not.toContain("private embedding backend");
+    expect(ctx.documents.findVersion(versionId)?.state).toBe("FAILED");
+    expect(ctx.vectorStore.upsert).not.toHaveBeenCalled();
+    expect(ctx.models.embedDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the job's lease instead of abandoning it when asked to stop mid-processing", async () => {
+    const ctx = await setup();
+    const pdfPath = await createTestPdf(ctx.root, [
+      ["MATRÍCULA", "Contenido de prueba con líneas suficientes para indexar."],
+    ]);
+    const { job } = await enqueueJob(ctx, pdfPath);
+    const controller = new AbortController();
+    ctx.models.embedDocuments.mockImplementation(async (texts: string[]) => {
+      // Simulate shutdown being requested while embedding is in flight; the
+      // worker must finish this call naturally, then notice the abort at
+      // the next stage boundary (before storing) and release the lease
+      // instead of continuing or abandoning the job.
+      controller.abort();
+      return texts.map(() => [0.1, 0.2, 0.3]);
+    });
+
+    await ctx.worker.start(controller.signal);
+
+    const finalJob = ctx.jobs.find(job.id);
+    expect(finalJob).toMatchObject({
+      status: "queued",
+      stage: "queued",
+      progress: 0,
+      leaseOwner: null,
+      leaseUntil: null,
+    });
+    expect(existsSync(job.tempFilePath)).toBe(true);
+    expect(ctx.vectorStore.upsert).not.toHaveBeenCalled();
+
+    // The released job can still be picked up and completed normally by a
+    // fresh worker (simulating the next process) since the temp file
+    // survived the graceful release.
+    ctx.models.embedDocuments.mockReset();
+    ctx.models.embedDocuments.mockImplementation(async (texts: string[]) =>
+      texts.map(() => [0.1, 0.2, 0.3]),
+    );
+    const secondWorker = new IndexingWorker({
+      jobs: ctx.jobs,
+      documents: ctx.documents,
+      extractor: new PdfExtractor(),
+      chunker: new TextChunker(),
+      models: ctx.models,
+      vectorStore: ctx.vectorStore,
+      cleaner: new RetryingUploadCleaner(),
+      clock: ctx.clock,
+      owner: "worker-2",
+      leaseMs: 60_000,
+      embedBatchSize: 16,
+      pollIntervalMs: 1_000,
+      embeddingDimensions: 3,
+    });
+
+    const secondOutcome = await secondWorker.runOnce();
+    expect(secondOutcome).toBe("processed");
+    expect(ctx.jobs.find(job.id)?.status).toBe("completed");
+    expect(existsSync(job.tempFilePath)).toBe(false);
+  });
+
+  it("does not delete the temp file when the lease is lost to another owner mid-processing", async () => {
+    // Regression guard for the release/abandon distinction: a job whose
+    // fate this worker no longer controls (LeaseLostError) must not have
+    // its temp file deleted, since the new owner still needs it.
+    const ctx = await setup({ leaseMs: 1 });
+    const pdfPath = await createTestPdf(ctx.root, [
+      ["MATRÍCULA", "Contenido de prueba con líneas suficientes para indexar."],
+    ]);
+    const { job } = await enqueueJob(ctx, pdfPath);
+    ctx.models.embedDocuments.mockImplementation(async (texts: string[]) => {
+      ctx.clock.advance(1_000);
+      const otherJobs = new IndexingJobRepository(ctx.database, ctx.clock);
+      otherJobs.recoverExpired();
+      otherJobs.leaseNext("other-owner", 60_000);
+      return texts.map(() => [0.1, 0.2, 0.3]);
+    });
+
+    const outcome = await ctx.worker.runOnce();
+
+    expect(outcome).toBe("processed");
+    expect(ctx.jobs.find(job.id)?.leaseOwner).toBe("other-owner");
+    expect(existsSync(job.tempFilePath)).toBe(true);
+  });
 });
