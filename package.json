@@ -2,13 +2,13 @@
   "name": "rag-mvp-implementation",
   "version": "1.0.0",
   "description": "Teacher-owned, Spanish-only RAG service for the Connectia course project. The service is designed for Node.js and TypeScript with LangChain, Ollama, Qdrant, SQLite, and Docker Compose on Ubuntu Server.",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",

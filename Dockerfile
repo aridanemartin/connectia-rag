@@ -50,7 +50,7 @@ HEALTHCHECK \
   CMD node -e \
     "fetch('http://127.0.0.1:3000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]
 
 # ──────────────────────────────────────────────────────────────────────────
 # Dev – hot-reload development image (includes dev dependencies)
