@@ -36,7 +36,7 @@ export interface IndexingRequest {
 }
 
 export interface IndexingEnqueuer {
-  enqueue(input: IndexingRequest): Promise<IndexingJob>;
+  enqueue(input: IndexingRequest, signal?: AbortSignal): Promise<IndexingJob>;
 }
 
 type DocumentWriter = Pick<DocumentRepository, "upsertIndexing">;
@@ -55,12 +55,26 @@ function canonicalMetadata(input: IndexingRequest): string {
   });
 }
 
-async function hashFile(path: string): Promise<string> {
+function ensureIndexingActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new AppError(
+      503,
+      "INDEXING_ABORTED",
+      "La indexación se ha cancelado.",
+    );
+  }
+}
+
+async function hashFile(path: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash("sha256");
   const header = Buffer.alloc(5);
   let headerBytes = 0;
+  const input = createReadStream(path);
+  const onAbort = () => input.destroy();
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    for await (const chunk of createReadStream(path)) {
+    for await (const chunk of input) {
+      ensureIndexingActive(signal);
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       if (headerBytes < header.length) {
         const copied = bytes.copy(
@@ -74,12 +88,16 @@ async function hashFile(path: string): Promise<string> {
       hash.update(bytes);
     }
   } catch {
+    ensureIndexingActive(signal);
     throw new AppError(
       500,
       "UPLOAD_PROCESSING_FAILED",
       "No se ha podido preparar el PDF.",
     );
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
+  ensureIndexingActive(signal);
   if (headerBytes !== header.length || header.toString("ascii") !== "%PDF-") {
     throw new AppError(
       400,
@@ -97,12 +115,17 @@ export class IndexingService implements IndexingEnqueuer {
     private readonly jobs: JobWriter,
   ) {}
 
-  async enqueue(input: IndexingRequest): Promise<IndexingJob> {
-    const contentHash = await hashFile(input.tempFilePath);
+  async enqueue(
+    input: IndexingRequest,
+    signal?: AbortSignal,
+  ): Promise<IndexingJob> {
+    ensureIndexingActive(signal);
+    const contentHash = await hashFile(input.tempFilePath, signal);
     const requestHash = createHash("sha256")
       .update(contentHash + canonicalMetadata(input), "utf8")
       .digest("hex");
 
+    ensureIndexingActive(signal);
     const persist = this.database.transaction(() => {
       const existing = this.jobs.findByIdempotencyKey(input.idempotencyKey);
       if (existing) {

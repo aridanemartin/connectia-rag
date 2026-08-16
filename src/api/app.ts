@@ -8,6 +8,7 @@ import {
   createDefaultReadiness,
   type Readiness,
 } from "../health/readiness.service.js";
+import { ActivityTracker } from "../shared/activity-tracker.js";
 import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -22,6 +23,7 @@ export interface AppDependencies {
   readiness: Readiness;
   indexingService: IndexingEnqueuer;
   uploadUnlink: UploadUnlink;
+  activity: ActivityTracker;
 }
 
 function unavailableIndexingService(): IndexingEnqueuer {
@@ -41,6 +43,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const readiness = deps.readiness ?? createDefaultReadiness(config);
   const indexingService = deps.indexingService ?? unavailableIndexingService();
+  const activity = deps.activity ?? new ActivityTracker();
   const app = express();
   const openApiDocument = createOpenApiDocument();
   const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
@@ -63,7 +66,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
-    createIndexingRouter(config, indexingService, deps.uploadUnlink),
+    createIndexingRouter(config, indexingService, deps.uploadUnlink, activity),
   );
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);

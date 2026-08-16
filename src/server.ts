@@ -1,19 +1,26 @@
 import type { Server } from "node:http";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { type AppDependencies, createApp } from "./api/app.js";
 import { type AppConfig, loadConfig } from "./config/env.js";
 import {
   createIndexingComposition,
   type IndexingComposition,
 } from "./documents/indexing.service.js";
+import { ActivityTracker } from "./shared/activity-tracker.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
+const DEFAULT_ABORT_GRACE_MS = 1_000;
 
 type CompositionFactory = (config: AppConfig) => IndexingComposition;
 type ApplicationFactory = (
   dependencies: Partial<AppDependencies>,
 ) => ReturnType<typeof createApp>;
+
+export class ShutdownActivityTimeoutError extends Error {
+  constructor() {
+    super("Application activity did not settle after shutdown abort");
+    this.name = "ShutdownActivityTimeoutError";
+  }
+}
 
 export interface StartServerOptions {
   config?: AppConfig;
@@ -21,11 +28,13 @@ export interface StartServerOptions {
   createApplication?: ApplicationFactory;
   registerSignalHandlers?: boolean;
   shutdownTimeoutMs?: number;
+  shutdownAbortGraceMs?: number;
 }
 
 export interface RunningServer {
   server: Server;
   composition: IndexingComposition;
+  activity: ActivityTracker;
   shutdown(): Promise<void>;
 }
 
@@ -39,26 +48,31 @@ function listen(application: ReturnType<ApplicationFactory>, port: number) {
   });
 }
 
-function closeHttpServer(server: Server, timeoutMs: number): Promise<void> {
+function beginHttpClose(server: Server): Promise<void> {
   if (!server.listening) {
     return Promise.resolve();
   }
   return new Promise((resolveClosed) => {
+    server.close(() => resolveClosed());
+  });
+}
+
+function settlesWithin(settlement: Promise<unknown>, timeoutMs: number) {
+  return new Promise<boolean>((resolveSettled) => {
     let finished = false;
-    const finish = () => {
+    const finish = (settled: boolean) => {
       if (finished) {
         return;
       }
       finished = true;
       clearTimeout(timer);
-      resolveClosed();
+      resolveSettled(settled);
     };
-    const timer = setTimeout(() => {
-      server.closeAllConnections();
-      finish();
-    }, timeoutMs);
-    timer.unref();
-    server.close(finish);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    void settlement.then(
+      () => finish(true),
+      () => finish(true),
+    );
   });
 }
 
@@ -71,6 +85,8 @@ export async function startServer(
   const applicationFactory = options.createApplication ?? createApp;
   const shutdownTimeoutMs =
     options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+  const abortGraceMs = options.shutdownAbortGraceMs ?? DEFAULT_ABORT_GRACE_MS;
+  const activity = new ActivityTracker();
   const composition = compositionFactory(config);
   let compositionClosed = false;
   const closeComposition = () => {
@@ -85,13 +101,16 @@ export async function startServer(
   try {
     await composition.sweepOrphans();
     const dependencies: Partial<AppDependencies> = {
+      activity,
       config,
       indexingService: composition.indexingService,
     };
     server = await listen(applicationFactory(dependencies), config.PORT);
   } catch (error) {
+    activity.abort();
     if (server) {
-      await closeHttpServer(server, shutdownTimeoutMs);
+      server.closeAllConnections();
+      await beginHttpClose(server);
     }
     closeComposition();
     throw error;
@@ -108,11 +127,32 @@ export async function startServer(
         process.off("SIGTERM", signalHandler);
         signalsRegistered = false;
       }
-      try {
-        await closeHttpServer(server, shutdownTimeoutMs);
-      } finally {
-        closeComposition();
+      activity.stopAccepting();
+      const serverClosed = beginHttpClose(server);
+      const idle = activity.waitForIdle();
+      const drained = await settlesWithin(
+        Promise.all([serverClosed, idle]),
+        shutdownTimeoutMs,
+      );
+      if (!drained) {
+        activity.abort();
+        server.closeAllConnections();
+        const abortedActivitySettled = await settlesWithin(
+          Promise.all([serverClosed, activity.waitForIdle()]),
+          abortGraceMs,
+        );
+        if (!abortedActivitySettled) {
+          void Promise.all([serverClosed, activity.waitForIdle()]).then(() => {
+            try {
+              closeComposition();
+            } catch {
+              process.exitCode = 1;
+            }
+          });
+          throw new ShutdownActivityTimeoutError();
+        }
       }
+      closeComposition();
     })();
     return shutdownPromise;
   };
@@ -128,18 +168,10 @@ export async function startServer(
     signalsRegistered = true;
   }
 
-  return { server, composition, shutdown };
+  return { server, composition, activity, shutdown };
 }
 
-function isMainModule(): boolean {
-  const mainPath = process.argv[1];
-  return (
-    typeof mainPath === "string" &&
-    import.meta.url === pathToFileURL(resolve(mainPath)).href
-  );
-}
-
-if (isMainModule()) {
+if (import.meta.main) {
   void startServer().catch(() => {
     console.error("No se ha podido iniciar la API RAG de Connectia.");
     process.exitCode = 1;

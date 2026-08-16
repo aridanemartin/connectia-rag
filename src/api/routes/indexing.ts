@@ -15,6 +15,10 @@ import {
   UploadStorageError,
   type UploadUnlink,
 } from "../../documents/upload-storage.js";
+import {
+  ActivityNotAcceptedError,
+  type ActivityTracker,
+} from "../../shared/activity-tracker.js";
 import { AppError } from "../errors.js";
 
 const safeCanonicalText = (minimum: number, maximum: number) =>
@@ -45,8 +49,9 @@ const metadataSchema = z
 function uploadMiddleware(
   config: AppConfig,
   cleaner: RetryingUploadCleaner,
+  activity?: ActivityTracker,
 ): RequestHandler {
-  const storage = new SecureUploadStorage(config.TEMP_DIR, cleaner);
+  const storage = new SecureUploadStorage(config.TEMP_DIR, cleaner, activity);
   // The lockfile pins Multer 2.2.0 to Busboy 1.6.0. Busboy itself enforces a
   // finite 16 KiB/2,000-pair part-header boundary; it has no configurable
   // headerPairs option. The raw-wire integration test guards that real limit.
@@ -216,19 +221,22 @@ export function createIndexingRouter(
   config: AppConfig,
   indexingService: IndexingEnqueuer,
   uploadUnlink?: UploadUnlink,
+  activity?: ActivityTracker,
 ): Router {
   const router = Router();
   const cleaner = new RetryingUploadCleaner(uploadUnlink);
-  const upload = uploadMiddleware(config, cleaner);
+  const upload = uploadMiddleware(config, cleaner, activity);
 
   router.post("/", (request, response, next) => {
-    upload(request, response, (uploadError) => {
+    const execute = async (signal?: AbortSignal) => {
+      const uploadError = await new Promise<unknown>((resolveUpload) => {
+        upload(request, response, resolveUpload);
+      });
       if (uploadError) {
-        next(mapUploadError(uploadError));
-        return;
+        throw mapUploadError(uploadError);
       }
 
-      void (async () => {
+      await (async () => {
         let retainUpload = false;
         let primaryError: unknown;
         let responseBody:
@@ -236,7 +244,7 @@ export function createIndexingRouter(
           | undefined;
         try {
           const input = indexingInput(request);
-          const job = await indexingService.enqueue(input);
+          const job = await indexingService.enqueue(input, signal);
           retainUpload = job.tempFilePath === input.tempFilePath;
           responseBody = {
             jobId: job.id,
@@ -268,8 +276,33 @@ export function createIndexingRouter(
           );
         }
         response.status(202).json(responseBody);
-      })().catch(next);
-    });
+      })();
+    };
+    if (!activity) {
+      void execute().catch(next);
+      return;
+    }
+    void activity
+      .run(async (signal) => {
+        try {
+          await execute(signal);
+        } catch (error) {
+          next(error);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ActivityNotAcceptedError) {
+          next(
+            new AppError(
+              503,
+              "SERVER_SHUTTING_DOWN",
+              "El servidor se está apagando.",
+            ),
+          );
+          return;
+        }
+        next(error);
+      });
   });
 
   return router;

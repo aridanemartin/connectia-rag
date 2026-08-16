@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Request } from "express";
 import type multer from "multer";
+import type { ActivityTracker } from "../shared/activity-tracker.js";
 
 export const SERVER_UPLOAD_FILENAME_PATTERN =
   /^connectia-upload-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$/u;
@@ -96,17 +97,26 @@ export class SecureUploadStorage implements multer.StorageEngine {
   constructor(
     private readonly directory: string,
     private readonly cleaner: RetryingUploadCleaner,
+    private readonly activity?: ActivityTracker,
   ) {}
 
   _handleFile(
-    _request: Request,
+    request: Request,
     file: Express.Multer.File,
     callback: (error?: unknown, info?: Partial<Express.Multer.File>) => void,
   ): void {
+    let finishActivity: () => void = () => undefined;
+    try {
+      finishActivity = this.activity?.begin() ?? finishActivity;
+    } catch {
+      callback(new UploadStorageError());
+      return;
+    }
     let destination: string;
     try {
       destination = secureUploadDirectory(this.directory);
     } catch {
+      finishActivity();
       callback(new UploadStorageError());
       return;
     }
@@ -115,13 +125,67 @@ export class SecureUploadStorage implements multer.StorageEngine {
     const path = join(destination, filename);
     const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
     let settled = false;
+    let terminal = false;
+    let resourceReady = false;
+    let cleanupStarted = false;
+    let output: ReturnType<typeof createWriteStream> | undefined;
+    const onTerminal = () => {
+      terminal = true;
+      if (resourceReady) {
+        cleanupCreatedFile();
+      }
+    };
+    const onRequestClose = () => {
+      if (!request.readableEnded) {
+        onTerminal();
+      }
+    };
+    const onFileClose = () => {
+      if (!file.stream.readableEnded) {
+        onTerminal();
+      }
+    };
+    const removeTerminalListeners = () => {
+      request.off("aborted", onTerminal);
+      request.off("error", onTerminal);
+      request.off("close", onRequestClose);
+      file.stream.off("error", onTerminal);
+      file.stream.off("close", onFileClose);
+    };
     const finish = (error?: unknown, info?: Partial<Express.Multer.File>) => {
       if (settled) {
         return;
       }
       settled = true;
+      removeTerminalListeners();
+      finishActivity();
       callback(error, info);
     };
+    const cleanupCreatedFile = () => {
+      if (settled || cleanupStarted) {
+        return;
+      }
+      cleanupStarted = true;
+      const outputClosed = new Promise<void>((resolveClosed) => {
+        if (!output || output.closed) {
+          resolveClosed();
+          return;
+        }
+        output.once("close", resolveClosed);
+        output.destroy();
+      });
+      const fileRemoved = this.cleaner.remove(path);
+      void Promise.all([outputClosed, fileRemoved]).then(
+        () => finish(new UploadStorageError()),
+        () => finish(new UploadCleanupError()),
+      );
+    };
+
+    request.once("aborted", onTerminal);
+    request.once("error", onTerminal);
+    request.once("close", onRequestClose);
+    file.stream.once("error", onTerminal);
+    file.stream.once("close", onFileClose);
     open(
       path,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
@@ -131,20 +195,21 @@ export class SecureUploadStorage implements multer.StorageEngine {
           finish(new UploadStorageError());
           return;
         }
-        file.path = path;
-        let output: ReturnType<typeof createWriteStream> | undefined;
-        let failureStarted = false;
-        const failCreatedFile = () => {
-          if (settled || failureStarted) {
-            return;
+        if (
+          terminal ||
+          request.aborted ||
+          (request.destroyed && !request.readableEnded) ||
+          (file.stream.destroyed && !file.stream.readableEnded)
+        ) {
+          try {
+            closeSync(fileDescriptor);
+          } catch {
+            // The typed storage result below remains safe and observable.
           }
-          failureStarted = true;
-          output?.destroy();
-          void this.cleaner.remove(path).then(
-            () => finish(new UploadStorageError()),
-            () => finish(new UploadCleanupError()),
-          );
-        };
+          resourceReady = true;
+          cleanupCreatedFile();
+          return;
+        }
         try {
           fchmodSync(fileDescriptor, 0o600);
           output = createWriteStream(path, {
@@ -157,20 +222,29 @@ export class SecureUploadStorage implements multer.StorageEngine {
           } catch {
             // The unlink retry below is the authoritative recovery path.
           }
-          failCreatedFile();
+          resourceReady = true;
+          cleanupCreatedFile();
           return;
         }
-        file.stream.once("error", failCreatedFile);
-        output.once("error", failCreatedFile);
-        output.once("finish", () =>
+        const activeOutput = output;
+        activeOutput.once("error", onTerminal);
+        resourceReady = true;
+        if (terminal) {
+          cleanupCreatedFile();
+          return;
+        }
+        activeOutput.once("finish", () => {
+          if (terminal || cleanupStarted) {
+            return;
+          }
           finish(undefined, {
             destination,
             filename,
             path,
-            size: output.bytesWritten,
-          }),
-        );
-        file.stream.pipe(output);
+            size: activeOutput.bytesWritten,
+          });
+        });
+        file.stream.pipe(activeOutput);
       },
     );
   }

@@ -77,12 +77,13 @@ describe("production server lifecycle", () => {
       });
     };
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const priorSignalHandlers = new Set(process.listeners("SIGTERM"));
 
     const runtime = await startServer({
       config,
       createComposition,
       createApplication,
-      registerSignalHandlers: false,
+      registerSignalHandlers: true,
       shutdownTimeoutMs: 250,
     });
     try {
@@ -91,6 +92,8 @@ describe("production server lifecycle", () => {
         composition?.indexingService,
       );
       expect(runtime.composition).toBe(composition);
+      expect(runtime.activity).toBeDefined();
+      expect(appDependencies?.activity).toBe(runtime.activity);
       expect(runtime.server.listening).toBe(true);
       await expect(access(orphan)).rejects.toMatchObject({ code: "ENOENT" });
 
@@ -103,15 +106,57 @@ describe("production server lifecycle", () => {
       activeSocket.write(
         "POST /api/v1/indexing/jobs HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10\r\n\r\nx",
       );
+      const signalHandler = process
+        .listeners("SIGTERM")
+        .find((listener) => !priorSignalHandlers.has(listener));
+      expect(signalHandler).toBeDefined();
       const shutdownStartedAt = Date.now();
+      signalHandler?.("SIGTERM");
       await Promise.all([runtime.shutdown(), runtime.shutdown()]);
 
       expect(Date.now() - shutdownStartedAt).toBeLessThan(1_000);
       expect(closeCalls).toBe(1);
+      expect(process.listeners("SIGTERM")).not.toContain(signalHandler);
       expect(() => composition?.database.prepare("SELECT 1").get()).toThrow();
       activeSocket.destroy();
     } finally {
       await runtime.shutdown();
     }
+  });
+
+  it("closes the owned composition once when startup sweeping fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "connectia-server-lifecycle-"));
+    roots.push(root);
+    const config = {
+      ...loadConfig({
+        AUTH_TOKEN,
+        DATABASE_PATH: join(root, "connectia.sqlite"),
+        TEMP_DIR: join(root, "uploads"),
+      }),
+      PORT: 0,
+    };
+    const owned = createIndexingComposition(config);
+    let closeCalls = 0;
+    const composition: IndexingComposition = {
+      ...owned,
+      sweepOrphans: async () => {
+        throw new Error("private startup sweep failure");
+      },
+      close: () => {
+        closeCalls += 1;
+        owned.close();
+      },
+    };
+
+    await expect(
+      startServer({
+        config,
+        createComposition: () => composition,
+        registerSignalHandlers: false,
+      }),
+    ).rejects.toThrow("private startup sweep failure");
+
+    expect(closeCalls).toBe(1);
+    expect(() => composition.database.prepare("SELECT 1").get()).toThrow();
   });
 });
