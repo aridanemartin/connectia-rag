@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response } from "express";
 import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
 import { type AppConfig, loadConfig } from "../config/env.js";
+import { collectRuntimeMetrics } from "../diagnostics/runtime-metrics.js";
 import type { IndexingEnqueuer } from "../documents/indexing.service.js";
 import type { LifecycleReader } from "../documents/lifecycle.service.js";
 import type {
@@ -18,6 +19,7 @@ import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
+import { createInternalMetricsRouter } from "./routes/internal-metrics.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
 import {
   createCompatibilityRouter,
@@ -132,6 +134,12 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   );
   app.use("/health", createHealthRouter(readiness));
   app.use("/health", createHealthCompatibilityRouter());
+  if (config.ENABLE_INTERNAL_METRICS) {
+    app.use(
+      "/internal",
+      createInternalMetricsRouter({ collectMetrics: collectRuntimeMetrics }),
+    );
+  }
   app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
