@@ -13,12 +13,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { createServer, type AddressInfo } from "node:net";
-import { request as httpRequest } from "node:http";
+import { type AddressInfo, createServer } from "node:net";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-const encoder = new TextEncoder();
+const _encoder = new TextEncoder();
 
 /**
  * Deterministic embedding from SHA-256 hash of the text.
@@ -45,10 +44,42 @@ function decideResponse(
   context: ReadonlyArray<{ chunkId: string; text: string }>,
 ): unknown {
   const stopWords = new Set([
-    "el", "la", "los", "las", "un", "una", "de", "del", "en", "y", "e",
-    "o", "u", "a", "ante", "bajo", "con", "contra", "para", "por",
-    "que", "cual", "como", "cuando", "donde", "es", "se", "su", "lo",
-    "qué", "cuál", "cómo", "cuándo", "dónde", "al", "no",
+    "el",
+    "la",
+    "los",
+    "las",
+    "un",
+    "una",
+    "de",
+    "del",
+    "en",
+    "y",
+    "e",
+    "o",
+    "u",
+    "a",
+    "ante",
+    "bajo",
+    "con",
+    "contra",
+    "para",
+    "por",
+    "que",
+    "cual",
+    "como",
+    "cuando",
+    "donde",
+    "es",
+    "se",
+    "su",
+    "lo",
+    "qué",
+    "cuál",
+    "cómo",
+    "cuándo",
+    "dónde",
+    "al",
+    "no",
   ]);
   const words = question
     .toLowerCase()
@@ -199,9 +230,7 @@ export function startFakeOllamaServer(): Promise<FakeOllamaServer> {
 
           if (routeConfig.malformed) {
             resetRouteConfig();
-            socket.write(
-              htmlResponse(200, "Esto no es JSON válido { broken"),
-            );
+            socket.write(htmlResponse(200, "Esto no es JSON válido { broken"));
             socket.end();
             return;
           }
@@ -243,7 +272,7 @@ export function startFakeOllamaServer(): Promise<FakeOllamaServer> {
                 : "pregunta desconocida";
 
             // Extract context from system message if present
-            const sysMsg = messages.find(
+            const _sysMsg = messages.find(
               (m: unknown) =>
                 typeof m === "object" &&
                 m !== null &&
@@ -278,31 +307,31 @@ export function startFakeOllamaServer(): Promise<FakeOllamaServer> {
           return;
         }
 
-// ────────────────────────────────────────────────────────────
-      // POST /api/embed
-      // ────────────────────────────────────────────────────────────
-      if (method === "POST" && url === "/api/embed") {
-        let input: string | string[] = "";
-        try {
-          const full = JSON.parse(contentBody.toString("utf-8"));
-          input = full.input ?? "";
-        } catch {
-          input = "";
+        // ────────────────────────────────────────────────────────────
+        // POST /api/embed
+        // ────────────────────────────────────────────────────────────
+        if (method === "POST" && url === "/api/embed") {
+          let input: string | string[] = "";
+          try {
+            const full = JSON.parse(contentBody.toString("utf-8"));
+            input = full.input ?? "";
+          } catch {
+            input = "";
+          }
+
+          const inputs = Array.isArray(input) ? input : [input];
+
+          const embedding =
+            inputs.length > 0
+              ? deterministicEmbedding(inputs[0], 1024)
+              : deterministicEmbedding("", 1024);
+
+          socket.write(jsonResponse(200, { embedding }));
+          socket.end();
+          return;
         }
 
-        const inputs = Array.isArray(input) ? input : [input];
-
-        const embedding =
-          inputs.length > 0
-            ? deterministicEmbedding(inputs[0], 1024)
-            : deterministicEmbedding("", 1024);
-
-        socket.write(jsonResponse(200, { embedding }));
-        socket.end();
-        return;
-      }
-
-      // ────────────────────────────────────────────────────────────
+        // ────────────────────────────────────────────────────────────
 
         // ────────────────────────────────────────────────────────────
         // GET /api/tags
@@ -310,7 +339,10 @@ export function startFakeOllamaServer(): Promise<FakeOllamaServer> {
         if (method === "GET" && url === "/api/tags") {
           socket.write(
             jsonResponse(200, {
-              models: [{ name: "fake-chat-model" }, { name: "fake-embed-model" }],
+              models: [
+                { name: "fake-chat-model" },
+                { name: "fake-embed-model" },
+              ],
             }),
           );
           socket.end();

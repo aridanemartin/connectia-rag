@@ -19,7 +19,6 @@ import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
-import { createInternalMetricsRouter } from "./routes/internal-metrics.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
 import {
   createCompatibilityRouter,
@@ -31,6 +30,7 @@ import {
   createIndexingRouter,
   type IndexingJobStatusReader,
 } from "./routes/indexing.js";
+import { createInternalMetricsRouter } from "./routes/internal-metrics.js";
 import { createQuestionsRouter } from "./routes/questions.js";
 
 export interface AppDependencies {
@@ -134,13 +134,13 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   );
   app.use("/health", createHealthRouter(readiness));
   app.use("/health", createHealthCompatibilityRouter());
+  app.use(authenticate(config));
   if (config.ENABLE_INTERNAL_METRICS) {
     app.use(
       "/internal",
       createInternalMetricsRouter({ collectMetrics: collectRuntimeMetrics }),
     );
   }
-  app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
     createIndexingRouter(

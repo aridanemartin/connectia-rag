@@ -58,7 +58,9 @@ export async function collectRuntimeMetrics(): Promise<RuntimeSnapshot> {
   try {
     // process._getActiveHandles() returns an array; it's available in Node.js
     // but is an undocumented internal.
-    const handles = (process as NodeJS.EventEmitter & { _getActiveHandles?(): unknown[] })._getActiveHandles?.();
+    const handles = (
+      process as NodeJS.EventEmitter & { _getActiveHandles?(): unknown[] }
+    )._getActiveHandles?.();
     if (handles) {
       activeHandles = handles.length;
     }

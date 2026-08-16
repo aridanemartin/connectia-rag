@@ -22,7 +22,9 @@ const REQUESTS = [
       "Content-Type": "application/json",
       Authorization: "Bearer test-auth-token-with-at-least-32-characters",
     },
-    body: JSON.stringify({ question: "¿Cuál es el plazo de matrícula ordinaria?" }),
+    body: JSON.stringify({
+      question: "¿Cuál es el plazo de matrícula ordinaria?",
+    }),
   },
   {
     method: "POST",
@@ -49,7 +51,9 @@ const REQUESTS = [
       "Content-Type": "application/json",
       Authorization: "Bearer test-auth-token-with-at-least-32-characters",
     },
-    body: JSON.stringify({ question: "¿Cuál es el precio del abono de transporte?" }),
+    body: JSON.stringify({
+      question: "¿Cuál es el precio del abono de transporte?",
+    }),
   },
   {
     method: "POST",

@@ -8,11 +8,11 @@
 
 import { describe, expect, it, onTestFinished } from "vitest";
 import { QdrantVectorStore } from "../../src/rag/qdrant-vector-store.js";
-import {
-  startQdrantTestContext,
-  type QdrantTestContext,
-} from "../support/qdrant-test-context.js";
 import type { VectorPoint } from "../../src/rag/vector-store.js";
+import {
+  type QdrantTestContext,
+  startQdrantTestContext,
+} from "../support/qdrant-test-context.js";
 
 const DIMENSIONS = 128;
 
@@ -89,10 +89,12 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("connects, creates a collection, and reports healthy", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
-    const store = new QdrantVectorStore(testConfig(ctx.clientUrl, ctx.collection));
+    const store = new QdrantVectorStore(
+      testConfig(ctx.clientUrl, ctx.collection),
+    );
 
     await store.ensureCollection(DIMENSIONS);
 
@@ -105,7 +107,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("upserts points and searches them back", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
     const store = new QdrantVectorStore(
@@ -114,7 +116,11 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     await store.ensureCollection(DIMENSIONS);
 
     const vId = "integration-version-1";
-    const point = makePoint("search-test-point", vId, "Texto sobre matrícula escolar.");
+    const point = makePoint(
+      "search-test-point",
+      vId,
+      "Texto sobre matrícula escolar.",
+    );
     await store.upsert([point]);
 
     // Search with the same vector should find the point
@@ -128,7 +134,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("filters by allowed version IDs", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
     const store = new QdrantVectorStore(
@@ -163,7 +169,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("returns empty results for version filter with no matches", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
     const store = new QdrantVectorStore(
@@ -171,9 +177,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     );
     await store.ensureCollection(DIMENSIONS);
 
-    await store.upsert([
-      makePoint("p1", "v-present", "Texto presente."),
-    ]);
+    await store.upsert([makePoint("p1", "v-present", "Texto presente.")]);
 
     const results = await store.search(
       new Array(DIMENSIONS).fill(0.01),
@@ -188,7 +192,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("deletes all points for a version", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
     const store = new QdrantVectorStore(
@@ -216,7 +220,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
   it("returns scores sorted descending by relevance", async () => {
     ctx = await startQdrantTestContext();
     onTestFinished(async () => {
-      await ctx.stop();
+      await ctx?.stop();
     });
 
     const store = new QdrantVectorStore(

@@ -15,19 +15,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../src/api/app.js";
 import { loadConfig } from "../../src/config/env.js";
 import { LifecycleService } from "../../src/documents/lifecycle.service.js";
-import {
-  closeDatabase,
-  openDatabase,
-} from "../../src/persistence/database.js";
+import { openDatabase } from "../../src/persistence/database.js";
 import { migrate } from "../../src/persistence/migrate.js";
 import { DocumentRepository } from "../../src/persistence/repositories/document.repository.js";
 import { GenerationGate } from "../../src/rag/generation-gate.js";
 import { QuestionService } from "../../src/rag/question.service.js";
-import type { Clock } from "../../src/shared/clock.js";
 import { ActivityTracker } from "../../src/shared/activity-tracker.js";
+import type { Clock } from "../../src/shared/clock.js";
 import {
-  startFakeOllamaServer,
   type FakeOllamaServer,
+  startFakeOllamaServer,
 } from "../support/fake-ollama-server.js";
 
 class MutableClock implements Clock {
@@ -112,7 +109,7 @@ function fakeUploadUnlink(): Promise<void> {
 
 describe("E2E: Document question flow", () => {
   let fakeOllama: FakeOllamaServer;
-  let server: Server;
+  let _server: Server;
   let database: ReturnType<typeof openDatabase>;
 
   beforeAll(async () => {
@@ -214,7 +211,7 @@ describe("E2E: Document question flow", () => {
 
     await new Promise<void>((resolve, reject) => {
       const s = app.listen(0, () => {
-        server = s;
+        _server = s;
         resolve();
       });
       s.once("error", reject);

@@ -14,14 +14,10 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import pino from "pino";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config/env.js";
 import { LifecycleService } from "../../src/documents/lifecycle.service.js";
-import {
-  closeDatabase,
-  openDatabase,
-} from "../../src/persistence/database.js";
+import { closeDatabase, openDatabase } from "../../src/persistence/database.js";
 import { migrate } from "../../src/persistence/migrate.js";
 import { DocumentRepository } from "../../src/persistence/repositories/document.repository.js";
 import { GenerationGate } from "../../src/rag/generation-gate.js";
@@ -30,12 +26,12 @@ import { QuestionService } from "../../src/rag/question.service.js";
 import type { VectorPoint } from "../../src/rag/vector-store.js";
 import type { Clock } from "../../src/shared/clock.js";
 import {
-  startFakeOllamaServer,
   type FakeOllamaServer,
+  startFakeOllamaServer,
 } from "../support/fake-ollama-server.js";
 import {
-  startQdrantTestContext,
   type QdrantTestContext,
+  startQdrantTestContext,
 } from "../support/qdrant-test-context.js";
 
 class MutableClock implements Clock {
@@ -70,11 +66,7 @@ interface EvaluationManifest {
 
 const DIMENSIONS = 128;
 
-function testConfig(
-  ollamaUrl: string,
-  qdrantUrl: string,
-  collection: string,
-) {
+function testConfig(ollamaUrl: string, qdrantUrl: string, collection: string) {
   return loadConfig({
     PORT: "3000",
     LOG_LEVEL: "silent",
@@ -228,7 +220,7 @@ describe("Evaluaciones RAG (Español)", () => {
 
   afterAll(async () => {
     await fakeOllama.stop();
-    await qdrantCtx.stop();
+    await qdrantCtx?.stop();
   });
 
   for (const q of questions) {

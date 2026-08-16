@@ -8,7 +8,6 @@
  *    dependency failures
  */
 
-import PQueue from "p-queue";
 import pino from "pino";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -16,13 +15,13 @@ import { createApp } from "../../src/api/app.js";
 import { loadConfig } from "../../src/config/env.js";
 import { ActivityTracker } from "../../src/shared/activity-tracker.js";
 import {
-  startFakeOllamaServer,
   type FakeOllamaServer,
+  startFakeOllamaServer,
 } from "../support/fake-ollama-server.js";
 
 const AUTH_TOKEN = "test-auth-token-with-at-least-32-characters";
 
-function testConfig(ollamaUrl: string) {
+function testConfig(ollamaUrl: string, enableInternalMetrics = false) {
   return loadConfig({
     PORT: "3000",
     LOG_LEVEL: "silent",
@@ -45,20 +44,11 @@ function testConfig(ollamaUrl: string) {
     RAG_SCORE_THRESHOLD: "0.0",
     DIAGNOSTICS_ENABLED: "false",
     DIAGNOSTICS_TTL_HOURS: "24",
-    ENABLE_INTERNAL_METRICS: "false",
+    ENABLE_INTERNAL_METRICS: enableInternalMetrics ? "true" : "false",
     INDEXING_EMBED_BATCH_SIZE: "16",
     INDEXING_LEASE_MS: "60000",
     INDEXING_POLL_INTERVAL_MS: "1000",
   });
-}
-
-function defaultGate() {
-  const queue = new PQueue({ concurrency: 2 });
-  return {
-    run: async <T>(fn: () => Promise<T>): Promise<T> => {
-      return queue.add(fn);
-    },
-  };
 }
 
 describe("E2E: Failure recovery", () => {
@@ -186,5 +176,70 @@ describe("E2E: Failure recovery", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  describe("GET /internal/metrics (authenticated)", () => {
+    it("returns 401 without bearer token when ENABLE_INTERNAL_METRICS=true", async () => {
+      const config = testConfig(fakeOllama.url, true);
+      const app = createApp({
+        config,
+        logger: pino({ level: "silent" }),
+      });
+
+      const response = await request(app).get("/internal/metrics");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 200 with bearer token when ENABLE_INTERNAL_METRICS=true", async () => {
+      const config = testConfig(fakeOllama.url, true);
+      const app = createApp({
+        config,
+        logger: pino({ level: "silent" }),
+      });
+
+      const response = await request(app)
+        .get("/internal/metrics")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty("timestamp");
+      expect(response.body).toHaveProperty("heapUsedMb");
+      expect(response.body).toHaveProperty("eventLoopLagMs");
+      expect(typeof response.body.heapUsedMb).toBe("number");
+    });
+
+    it("returns 404 when ENABLE_INTERNAL_METRICS=false (route not mounted)", async () => {
+      const config = testConfig(fakeOllama.url, false);
+      const app = createApp({
+        config,
+        logger: pino({ level: "silent" }),
+      });
+
+      const response = await request(app)
+        .get("/internal/metrics")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it("is mounted AFTER the auth middleware (not public)", async () => {
+      // Verify the route ordering by checking that /internal/* is behind auth
+      // while /health is not
+      const config = testConfig(fakeOllama.url, true);
+      const app = createApp({
+        config,
+        logger: pino({ level: "silent" }),
+      });
+
+      // Public health endpoint should work without auth
+      const healthResponse = await request(app).get("/health");
+      expect(healthResponse.status).toBe(200);
+
+      // Internal metrics must require auth
+      const internalResponse = await request(app).get("/internal/metrics");
+      expect(internalResponse.status).toBe(401);
+    });
   });
 });
