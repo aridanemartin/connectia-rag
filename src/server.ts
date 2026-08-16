@@ -127,6 +127,7 @@ export async function startServer(
     await composition.sweepOrphans();
     composition.recoverExpiredJobs();
     composition.recoverExpiredCleanupJobs();
+    await composition.diagnostics.purgeExpired();
     const dependencies: Partial<AppDependencies> = {
       activity,
       config,
@@ -163,11 +164,13 @@ export async function startServer(
   let workerLoop: Promise<void> | undefined;
   let cleanupTeardown: AbortController | undefined;
   let cleanupLoop: Promise<void> | undefined;
+  let purgeInterval: ReturnType<typeof setInterval> | undefined;
 
   let shutdownPromise: Promise<void> | undefined;
   let signalsRegistered = false;
   const shutdown = () => {
     shutdownPromise ??= (async () => {
+      if (purgeInterval) clearInterval(purgeInterval);
       if (signalsRegistered) {
         process.off("SIGINT", signalHandler);
         process.off("SIGTERM", signalHandler);
@@ -272,6 +275,10 @@ export async function startServer(
       "El trabajador de limpieza se ha detenido de forma inesperada.",
     );
   });
+
+  purgeInterval = setInterval(() => {
+    void composition.diagnostics.purgeExpired();
+  }, 3_600_000).unref();
 
   return { server, composition, activity, shutdown };
 }

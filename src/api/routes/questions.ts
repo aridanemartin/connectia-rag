@@ -94,6 +94,7 @@ function canonicalHandler(deps: QuestionRouteDependencies): RequestHandler {
         const result = await deps.questionService.ask(
           parsed.data.question,
           allowedVersionIds,
+          request.requestId,
         );
         response.status(200).json({ ...result, requestId: request.requestId });
       } catch (error) {

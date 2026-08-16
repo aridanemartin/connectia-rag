@@ -19,7 +19,8 @@
     "compose:down": "docker compose down",
     "compose:dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build",
     "fixtures:generate": "tsx scripts/generate-fixtures.ts",
-    "corpus:seed": "tsx scripts/seed-corpus.ts"
+    "corpus:seed": "tsx scripts/seed-corpus.ts",
+    "diagnostics": "tsx src/diagnostics/diagnostics.cli.ts"
   },
   "keywords": [],
   "author": "",
