@@ -1,3 +1,4 @@
+import pino from "pino";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../../src/api/app.js";
@@ -9,6 +10,7 @@ describe("GET /health/live", () => {
       config: loadConfig({
         AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
       }),
+      logger: pino({ level: "silent" }),
     });
 
     const response = await request(app).get("/health/live");
