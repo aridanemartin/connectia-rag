@@ -3,6 +3,7 @@ import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
 import { type AppConfig, loadConfig } from "../config/env.js";
 import type { IndexingEnqueuer } from "../documents/indexing.service.js";
+import type { LifecycleReader } from "../documents/lifecycle.service.js";
 import type {
   UploadFailureReporter,
   UploadUnlink,
@@ -17,6 +18,7 @@ import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
+import { createDocumentsRouter } from "./routes/documents.js";
 import { createHealthRouter } from "./routes/health.js";
 import {
   createIndexingRouter,
@@ -29,6 +31,7 @@ export interface AppDependencies {
   readiness: Readiness;
   indexingService: IndexingEnqueuer;
   indexingJobs: IndexingJobStatusReader;
+  lifecycle: LifecycleReader;
   uploadUnlink: UploadUnlink;
   uploadFailureReporter: UploadFailureReporter;
   activity: ActivityTracker;
@@ -50,12 +53,34 @@ function unavailableIndexingJobs(): IndexingJobStatusReader {
   return { find: () => undefined };
 }
 
+function unavailableLifecycle(): LifecycleReader {
+  return {
+    activate: () => {
+      throw new AppError(
+        503,
+        "LIFECYCLE_UNAVAILABLE",
+        "El servicio de ciclo de vida no está disponible.",
+      );
+    },
+    archive: () => {
+      throw new AppError(
+        503,
+        "LIFECYCLE_UNAVAILABLE",
+        "El servicio de ciclo de vida no está disponible.",
+      );
+    },
+    allowedActiveVersions: () => [],
+    allowedPreviewVersions: () => [],
+  };
+}
+
 export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const config = deps.config ?? loadConfig(process.env);
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const readiness = deps.readiness ?? createDefaultReadiness(config);
   const indexingService = deps.indexingService ?? unavailableIndexingService();
   const indexingJobs = deps.indexingJobs ?? unavailableIndexingJobs();
+  const lifecycle = deps.lifecycle ?? unavailableLifecycle();
   const activity = deps.activity ?? new ActivityTracker();
   const uploadFailureReporter: UploadFailureReporter =
     deps.uploadFailureReporter ??
@@ -96,6 +121,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
       uploadFailureReporter,
     ),
   );
+  app.use("/api/v1/documents", createDocumentsRouter(lifecycle, activity));
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);
   });

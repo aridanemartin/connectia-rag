@@ -126,11 +126,13 @@ export async function startServer(
   try {
     await composition.sweepOrphans();
     composition.recoverExpiredJobs();
+    composition.recoverExpiredCleanupJobs();
     const dependencies: Partial<AppDependencies> = {
       activity,
       config,
       indexingService: composition.indexingService,
       indexingJobs: composition.jobs,
+      lifecycle: composition.lifecycle,
     };
     server = await listen(applicationFactory(dependencies), config.PORT);
   } catch (error) {
@@ -158,6 +160,8 @@ export async function startServer(
   // possibly still undefined in that residual gap.
   let workerTeardown: AbortController | undefined;
   let workerLoop: Promise<void> | undefined;
+  let cleanupTeardown: AbortController | undefined;
+  let cleanupLoop: Promise<void> | undefined;
 
   let shutdownPromise: Promise<void> | undefined;
   let signalsRegistered = false;
@@ -184,10 +188,12 @@ export async function startServer(
         );
         if (!abortedActivitySettled) {
           workerTeardown?.abort();
+          cleanupTeardown?.abort();
           void Promise.all([
             serverClosed,
             activity.waitForIdle(),
             workerLoop ? settlesWithin(workerLoop, abortGraceMs) : true,
+            cleanupLoop ? settlesWithin(cleanupLoop, abortGraceMs) : true,
           ]).then(() => {
             try {
               closeComposition();
@@ -207,8 +213,12 @@ export async function startServer(
       // somehow invoked in the residual gap before they are assigned below
       // — nothing to tear down or wait for in that case.)
       workerTeardown?.abort();
+      cleanupTeardown?.abort();
       if (workerLoop) {
         await settlesWithin(workerLoop, abortGraceMs);
+      }
+      if (cleanupLoop) {
+        await settlesWithin(cleanupLoop, abortGraceMs);
       }
       closeComposition();
     })();
@@ -248,6 +258,17 @@ export async function startServer(
   workerLoop = composition.worker.start(workerSignal).catch(() => {
     console.error(
       "El trabajador de indexación se ha detenido de forma inesperada.",
+    );
+  });
+
+  cleanupTeardown = new AbortController();
+  const cleanupSignal = AbortSignal.any([
+    activity.signal,
+    cleanupTeardown.signal,
+  ]);
+  cleanupLoop = composition.cleanupWorker.start(cleanupSignal).catch(() => {
+    console.error(
+      "El trabajador de limpieza se ha detenido de forma inesperada.",
     );
   });
 

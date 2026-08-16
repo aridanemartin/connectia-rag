@@ -10,6 +10,7 @@ import {
   openDatabase,
 } from "../persistence/database.js";
 import { migrate } from "../persistence/migrate.js";
+import { CleanupRepository } from "../persistence/repositories/cleanup.repository.js";
 import { DocumentRepository } from "../persistence/repositories/document.repository.js";
 import {
   type IndexingJob,
@@ -17,11 +18,13 @@ import {
 } from "../persistence/repositories/indexing-job.repository.js";
 import { QdrantVectorStore } from "../rag/qdrant-vector-store.js";
 import { type Clock, systemClock } from "../shared/clock.js";
+import { CleanupWorker } from "../workers/cleanup.worker.js";
 import { IndexingWorker } from "../workers/indexing.worker.js";
 import {
   type IndexingDocumentInput,
   PersistenceConflictError,
 } from "./document.types.js";
+import { LifecycleService } from "./lifecycle.service.js";
 import { PdfExtractor } from "./pdf-extractor.js";
 import { TextChunker } from "./text-chunker.js";
 import {
@@ -186,9 +189,12 @@ export interface IndexingComposition {
   indexingService: IndexingService;
   jobs: Pick<IndexingJobRepository, "find">;
   worker: IndexingWorker;
+  lifecycle: LifecycleService;
+  cleanupWorker: CleanupWorker;
   database: DatabaseConnection;
   sweepOrphans(): Promise<number>;
   recoverExpiredJobs(): number;
+  recoverExpiredCleanupJobs(): number;
   close(): void;
 }
 
@@ -208,9 +214,12 @@ export function createIndexingComposition(
     migrate(database);
     const jobs = new IndexingJobRepository(database, clock);
     const documents = new DocumentRepository(database, clock);
+    const cleanups = new CleanupRepository(database, clock);
     const indexingService = new IndexingService(database, documents, jobs);
+    const lifecycle = new LifecycleService(documents);
     const cleaner = new RetryingUploadCleaner(uploadUnlink);
     const owner = randomUUID();
+    const cleanupOwner = randomUUID();
     const extractor = new PdfExtractor();
     const chunker = new TextChunker();
     const models = new OllamaProvider(config);
@@ -230,10 +239,20 @@ export function createIndexingComposition(
       pollIntervalMs: config.INDEXING_POLL_INTERVAL_MS,
       embeddingDimensions: config.EMBEDDING_DIMENSIONS,
     });
+    const cleanupWorker = new CleanupWorker({
+      jobs: cleanups,
+      vectorStore,
+      clock,
+      owner: cleanupOwner,
+      leaseMs: config.INDEXING_LEASE_MS,
+      pollIntervalMs: config.INDEXING_POLL_INTERVAL_MS,
+    });
     return {
       indexingService,
       jobs,
       worker,
+      lifecycle,
+      cleanupWorker,
       database,
       sweepOrphans: () =>
         sweepOrphanUploads(
@@ -242,6 +261,7 @@ export function createIndexingComposition(
           cleaner,
         ),
       recoverExpiredJobs: () => jobs.recoverExpired(),
+      recoverExpiredCleanupJobs: () => cleanups.recoverExpired(),
       close: () => closeDatabase(database),
     };
   } catch (error) {
