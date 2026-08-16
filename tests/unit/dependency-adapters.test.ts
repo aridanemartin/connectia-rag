@@ -284,6 +284,68 @@ describe("OllamaProvider", () => {
     }
   });
 
+  it("keeps the abort deadline active while the response body is consumed", async () => {
+    vi.useFakeTimers();
+    const timeoutConfig = loadConfig({
+      AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
+      DEPENDENCY_TIMEOUT_MS: "25",
+    });
+    let ollamaSignal: AbortSignal | undefined;
+    const headersFirstFetch = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        ollamaSignal = init?.signal ?? undefined;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            ollamaSignal?.addEventListener("abort", () => {
+              queueMicrotask(() => {
+                controller.error(
+                  new Error("http://ollama:11434?token=secret body failure"),
+                );
+              });
+            });
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    const provider = new OllamaProvider(timeoutConfig, {
+      fetch: headersFirstFetch,
+      chat: { invoke: vi.fn() },
+      embeddings: {
+        embedDocuments: vi.fn(),
+        embedQuery: vi.fn(),
+      },
+    });
+
+    try {
+      let health: Awaited<ReturnType<OllamaProvider["health"]>> | undefined;
+      const check = provider.health().then((value) => {
+        health = value;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ollamaSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(ollamaSignal?.aborted).toBe(true);
+      expect(health).toEqual({
+        ollama: false,
+        chat: false,
+        embeddings: false,
+        dimensions: 0,
+      });
+      expect(JSON.stringify(health)).not.toContain("token=secret");
+      await check;
+      await Promise.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses exact Ollama tags and reports the observed embedding dimensions", async () => {
     const embeddings = {
       embedDocuments: vi.fn(),

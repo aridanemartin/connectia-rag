@@ -30,6 +30,46 @@ function unavailableHealth(): ModelHealth {
   };
 }
 
+function withTrackedBody(response: Response, finish: () => void): Response {
+  if (!response.body) {
+    finish();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        finish();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      finish();
+      await reader.cancel(reason);
+    },
+  });
+  const tracked = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  Object.defineProperties(tracked, {
+    url: { value: response.url },
+    redirected: { value: response.redirected },
+    type: { value: response.type },
+  });
+  return tracked;
+}
+
 function withTimeout(baseFetch: typeof fetch, timeoutMs: number): typeof fetch {
   return async (input, init) => {
     const timeoutController = new AbortController();
@@ -39,11 +79,20 @@ function withTimeout(baseFetch: typeof fetch, timeoutMs: number): typeof fetch {
       ? AbortSignal.any([inputSignal, timeoutController.signal])
       : timeoutController.signal;
     const timeout = setTimeout(() => timeoutController.abort(), timeoutMs);
+    let finished = false;
+    const finish = () => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timeout);
+      }
+    };
 
     try {
-      return await baseFetch(input, { ...init, signal });
-    } finally {
-      clearTimeout(timeout);
+      const response = await baseFetch(input, { ...init, signal });
+      return withTrackedBody(response, finish);
+    } catch (error) {
+      finish();
+      throw error;
     }
   };
 }
