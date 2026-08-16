@@ -2,11 +2,14 @@ import { open } from "node:fs/promises";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 
 const PDF_MAGIC = Buffer.from("%PDF-", "ascii");
+const BYTE_ORDER_MARK = "\uFEFF";
+const UNICODE_WHITE_SPACE_CHARACTER = /\p{White_Space}/u;
+const CONTROL_OR_FORMAT_CHARACTER = /[\p{Cc}\p{Cf}]/u;
 
 /**
  * A deliberately low guard that rejects parser noise while retaining concise
- * institutional notices. It counts non-whitespace Unicode code points after
- * deterministic normalization.
+ * institutional notices. It counts semantic Unicode code points after
+ * deterministic normalization, excluding White_Space, controls, and formats.
  */
 export const MIN_EXTRACTED_CHARACTERS = 20;
 
@@ -50,17 +53,47 @@ export class PdfProcessingError extends Error {
   }
 }
 
+/**
+ * Normalize parser text without flattening document structure. Unicode line
+ * separators become line breaks, paragraph separators become paragraph breaks,
+ * and other Unicode White_Space is collapsed horizontally. U+FEFF is always
+ * removed as parser/encoding noise; remaining control and format code points are
+ * also discarded after structural line separators have been preserved.
+ */
 export function normalizeExtractedText(value: string): string {
   return value
     .normalize("NFC")
-    .replace(/\r\n?/gu, "\n")
-    .split("\0")
+    .split(BYTE_ORDER_MARK)
     .join("")
+    .replace(/\r\n?/gu, "\n")
+    .split("\u0085")
+    .join("\n")
+    .split("\u2028")
+    .join("\n")
+    .split("\u2029")
+    .join("\n\n")
     .split("\n")
-    .map((line) => line.replace(/[\p{Zs}\t\v\f]+/gu, " ").trim())
+    .map((line) =>
+      line
+        .replace(/\p{White_Space}+/gu, " ")
+        .replace(/[\p{Cc}\p{Cf}]+/gu, "")
+        .trim(),
+    )
     .join("\n")
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
+}
+
+function isExtractableCharacter(character: string): boolean {
+  return (
+    character !== BYTE_ORDER_MARK &&
+    !UNICODE_WHITE_SPACE_CHARACTER.test(character) &&
+    !CONTROL_OR_FORMAT_CHARACTER.test(character)
+  );
+}
+
+export function hasExtractableText(value: string): boolean {
+  return Array.from(value).some(isExtractableCharacter);
 }
 
 function defaultLoaderFactory(path: string): PdfDocumentLoader {
@@ -117,12 +150,9 @@ function pageNumberFromMetadata(metadata: unknown): number | null {
   return metadata.loc.pageNumber;
 }
 
-function countNonWhitespaceCodePoints(pages: readonly ExtractedPage[]): number {
-  return Array.from(
-    pages
-      .map(({ text }) => text)
-      .join("")
-      .replace(/\s/gu, ""),
+function countExtractableCodePoints(pages: readonly ExtractedPage[]): number {
+  return Array.from(pages.map(({ text }) => text).join("")).filter(
+    isExtractableCharacter,
   ).length;
 }
 
@@ -179,7 +209,7 @@ export class PdfExtractor {
     }
 
     pages.sort((left, right) => left.page - right.page);
-    if (countNonWhitespaceCodePoints(pages) < MIN_EXTRACTED_CHARACTERS) {
+    if (countExtractableCodePoints(pages) < MIN_EXTRACTED_CHARACTERS) {
       throw new PdfProcessingError("PDF_TEXT_NOT_FOUND");
     }
 

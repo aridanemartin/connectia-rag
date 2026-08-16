@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { v5 as uuidv5 } from "uuid";
 import type { ChunkPayload } from "../rag/vector-store.js";
-import { type ExtractedPage, normalizeExtractedText } from "./pdf-extractor.js";
+import {
+  type ExtractedPage,
+  hasExtractableText,
+  normalizeExtractedText,
+} from "./pdf-extractor.js";
 
 export const CHUNK_POINT_NAMESPACE = "1f588a94-853c-5fd6-a703-bd57aaf65a5a";
 
@@ -92,7 +96,7 @@ function normalizedPages(pages: readonly ExtractedPage[]): ExtractedPage[] {
     }
     seenPages.add(page);
     const normalizedText = normalizeExtractedText(text);
-    if (normalizedText.length === 0) {
+    if (!hasExtractableText(normalizedText)) {
       throw new TextChunkingError("PDF_CHUNK_EMPTY");
     }
     return { page, text: normalizedText };
@@ -125,7 +129,7 @@ export class TextChunker {
 
         for (const splitText of splitTexts) {
           const text = normalizeExtractedText(splitText);
-          if (text.length === 0) {
+          if (!hasExtractableText(text)) {
             throw new TextChunkingError("PDF_CHUNK_EMPTY");
           }
           const chunkIndex = chunks.length;

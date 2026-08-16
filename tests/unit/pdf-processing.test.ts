@@ -2,16 +2,18 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  MIN_EXTRACTED_CHARACTERS,
-  PdfExtractor,
-} from "../../src/documents/pdf-extractor.js";
+import { PdfExtractor } from "../../src/documents/pdf-extractor.js";
 import { TextChunker } from "../../src/documents/text-chunker.js";
 import { createTestPdf } from "../support/create-test-pdf.js";
 
 const DOCUMENT_ID = "00000000-0000-4000-8000-000000000001";
 const VERSION_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_VERSION_ID = "22222222-2222-4222-8222-222222222222";
+const UNICODE_WHITE_SPACE_CODE_POINTS =
+  "\u0009\u000A\u000B\u000C\u000D\u0020\u0085\u00A0\u1680" +
+  "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A" +
+  "\u2028\u2029\u202F\u205F\u3000";
+const TWENTY_SEMANTIC_UNICODE_CODE_POINTS = "áéíóúñüÁÉÍÓÚÑÜçÇóóó🎓";
 const metadata = {
   documentId: DOCUMENT_ID,
   versionId: VERSION_ID,
@@ -72,7 +74,7 @@ describe("PdfExtractor", () => {
       load: async () => [
         {
           pageContent:
-            "  MATRÍCULA  \r\n\tEl   plazo termina.  \r\n\r\n\r\n  Segundo párrafo.  ",
+            "  MATRÍCULA  \r\nEl\tplazo termina.  \r\n\r\n\r\n  Segundo párrafo.  ",
           metadata: { loc: { pageNumber: 4 } },
         },
       ],
@@ -82,6 +84,26 @@ describe("PdfExtractor", () => {
       {
         page: 4,
         text: "MATRÍCULA\nEl plazo termina.\n\nSegundo párrafo.",
+      },
+    ]);
+  });
+
+  it("preserves Unicode line and paragraph structure while normalizing whitespace", async () => {
+    const path = await createMagicStub();
+    const extractor = new PdfExtractor(() => ({
+      load: async () => [
+        {
+          pageContent:
+            "  MATRÍCULA\u0085El   plazo\u2028continúa.\u2029Segundo párrafo.  ",
+          metadata: { loc: { pageNumber: 4 } },
+        },
+      ],
+    }));
+
+    await expect(extractor.extract(path)).resolves.toEqual([
+      {
+        page: 4,
+        text: "MATRÍCULA\nEl plazo\ncontinúa.\n\nSegundo párrafo.",
       },
     ]);
   });
@@ -217,12 +239,12 @@ describe("PdfExtractor", () => {
     });
   });
 
-  it("rejects one non-whitespace character below the extraction threshold", async () => {
+  it("rejects every Unicode White_Space code point and BOM as parser noise", async () => {
     const path = await createMagicStub();
     const extractor = new PdfExtractor(() => ({
       load: async () => [
         {
-          pageContent: "A".repeat(MIN_EXTRACTED_CHARACTERS - 1),
+          pageContent: `${UNICODE_WHITE_SPACE_CODE_POINTS.repeat(20)}${"\uFEFF".repeat(20)}`,
           metadata: { loc: { pageNumber: 1 } },
         },
       ],
@@ -233,16 +255,37 @@ describe("PdfExtractor", () => {
     });
   });
 
-  it("accepts exactly the minimum number of non-whitespace characters", async () => {
+  it("rejects 19 semantic characters even when Unicode whitespace and BOM add length", async () => {
     const path = await createMagicStub();
-    const text = "Á".repeat(MIN_EXTRACTED_CHARACTERS);
     const extractor = new PdfExtractor(() => ({
       load: async () => [
-        { pageContent: text, metadata: { loc: { pageNumber: 1 } } },
+        {
+          pageContent: `${"á".repeat(19)}${"\u0085".repeat(20)}${"\uFEFF".repeat(20)}`,
+          metadata: { loc: { pageNumber: 1 } },
+        },
       ],
     }));
 
-    await expect(extractor.extract(path)).resolves.toEqual([{ page: 1, text }]);
+    await expect(extractor.extract(path)).rejects.toMatchObject({
+      code: "PDF_TEXT_NOT_FOUND",
+    });
+  });
+
+  it("accepts and preserves exactly 20 semantic Unicode code points including an astral character", async () => {
+    const path = await createMagicStub();
+    const extractor = new PdfExtractor(() => ({
+      load: async () => [
+        {
+          pageContent: "áéíóúñüÁÉÍÓÚÑÜçÇóóó\uFEFF🎓\u0085\u00A0",
+          metadata: { loc: { pageNumber: 1 } },
+        },
+      ],
+    }));
+
+    expect(Array.from(TWENTY_SEMANTIC_UNICODE_CODE_POINTS)).toHaveLength(20);
+    await expect(extractor.extract(path)).resolves.toEqual([
+      { page: 1, text: TWENTY_SEMANTIC_UNICODE_CODE_POINTS },
+    ]);
   });
 });
 
@@ -371,6 +414,23 @@ describe("TextChunker", () => {
       new TextChunker().split({
         ...metadata,
         pages: [{ page: 1, text: " \r\n\t " }],
+      }),
+    ).rejects.toMatchObject({
+      code: "PDF_CHUNK_EMPTY",
+      message: "El PDF contiene un fragmento de texto vacío.",
+    });
+  });
+
+  it("rejects chunks made only of Unicode whitespace, controls, and format characters", async () => {
+    await expect(
+      new TextChunker().split({
+        ...metadata,
+        pages: [
+          {
+            page: 1,
+            text: "\u0085\u2028\u2029\u200B\u2060\u0007\uFEFF",
+          },
+        ],
       }),
     ).rejects.toMatchObject({
       code: "PDF_CHUNK_EMPTY",
