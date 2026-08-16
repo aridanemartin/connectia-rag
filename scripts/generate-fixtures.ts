@@ -7,8 +7,8 @@ import type {
   CorpusManifest,
   FixtureInstitution,
   FixtureSource,
-  GenerateOptions,
   GeneratedPdfInfo,
+  GenerateOptions,
   GenerationSummary,
 } from "./fixtures.types.js";
 
