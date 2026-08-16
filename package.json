@@ -17,7 +17,9 @@
     "wait:models": "node scripts/wait-for-models.ts",
     "compose:up": "docker compose up -d --build",
     "compose:down": "docker compose down",
-    "compose:dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build"
+    "compose:dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build",
+    "fixtures:generate": "tsx scripts/generate-fixtures.ts",
+    "corpus:seed": "tsx scripts/seed-corpus.ts"
   },
   "keywords": [],
   "author": "",

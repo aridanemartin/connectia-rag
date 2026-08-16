@@ -1,0 +1,28 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Actividades extraescolares 2026-2027",
+      "paragraphs": [
+        "El IES Pinar Ficticio ofrece las siguientes actividades extraescolares para el curso 2026-2027.",
+        "Ajedrez: martes y jueves de 16:00 a 17:00 en el aula de usos múltiples. Plazas limitadas a 20 participantes.",
+        "Teatro: miércoles de 17:00 a 18:30 en el salón de actos. Se trabaja expresión corporal, dicción e improvisación.",
+        "Robótica: viernes de 16:00 a 18:00 en el laboratorio de tecnología. Incluye iniciación a la programación con Arduino."
+      ]
+    },
+    {
+      "heading": "Inscripción y condiciones",
+      "paragraphs": [
+        "La inscripción permanece abierta del 1 al 20 de septiembre a través de la secretaría virtual del centro.",
+        "Las actividades tienen un coste de 20 euros al trimestre, salvo el club de lectura, que es gratuito.",
+        "Se requiere un mínimo de 8 inscritos para mantener cada actividad. En caso de cancelación se devuelve el importe.",
+        "Las actividades se realizan en horario de 16:00 a 18:00 de lunes a viernes según el calendario publicado."
+      ]
+    }
+  ]
+}

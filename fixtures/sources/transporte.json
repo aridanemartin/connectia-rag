@@ -1,0 +1,28 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Transporte escolar",
+      "paragraphs": [
+        "El IES Pinar Ficticio dispone de servicio de transporte escolar con dos rutas de autobús para el curso 2026-2027.",
+        "Ruta norte: sale de la parada del Ayuntamiento a las 7:45 y llega al centro a las 8:15.",
+        "Ruta sur: sale de la parada de la Plaza Mayor a las 7:50 y llega al centro a las 8:20.",
+        "Las rutas cubren las principales pedanías del municipio con un total de ocho paradas."
+      ]
+    },
+    {
+      "heading": "Solicitud y precios",
+      "paragraphs": [
+        "La solicitud de plaza de transporte se presenta en la secretaría del centro antes del 31 de julio.",
+        "El abono mensual del transporte escolar es de 35 euros por ruta.",
+        "Existe un abono reducido de 20 euros para familias numerosas y para el segundo hijo de la misma unidad familiar.",
+        "Las incidencias en el servicio se comunican a través del teléfono de atención +34 91 000 00 02."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+{
+  "schema": "connectia-corpus-manifest/v1",
+  "producer": "connectia-rag-demo",
+  "generatedAt": "2026-08-16T00:00:00.000Z",
+  "academicYear": "2026-2027",
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "documents": [
+    {
+      "documentId": "00000000-0000-4000-8000-000000000001",
+      "topic": "matricula",
+      "title": "Matrícula",
+      "description": "Plazo y procedimiento de matrícula para el curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000001",
+          "title": "Matrícula 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "matricula.json",
+          "file": "matricula-2026-2027.pdf",
+          "idempotencyKey": "seed-matricula-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "topic": "calendario",
+      "title": "Calendario escolar",
+      "description": "Calendario lectivo, festivos y evaluaciones del curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000002",
+          "title": "Calendario escolar 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "calendario.json",
+          "file": "calendario-2026-2027.pdf",
+          "idempotencyKey": "seed-calendario-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000003",
+      "topic": "becas",
+      "title": "Becas y ayudas",
+      "description": "Convocatoria de becas, cuantías y plazos para el curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000003",
+          "title": "Becas 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "becas.json",
+          "file": "becas-2026-2027.pdf",
+          "idempotencyKey": "seed-becas-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000004",
+      "topic": "convivencia",
+      "title": "Normas de convivencia",
+      "description": "Reglamento de convivencia, faltas y sanciones del curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000004",
+          "title": "Convivencia 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "convivencia.json",
+          "file": "convivencia-2026-2027.pdf",
+          "idempotencyKey": "seed-convivencia-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000005",
+      "topic": "comedor",
+      "title": "Servicio de comedor",
+      "description": "Información sobre el servicio de comedor, horarios, precios y bonificaciones.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000005",
+          "title": "Comedor 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "comedor.json",
+          "file": "comedor-2026-2027.pdf",
+          "idempotencyKey": "seed-comedor-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000006",
+      "topic": "transporte",
+      "title": "Transporte escolar",
+      "description": "Rutas, horarios y precios del transporte escolar para el curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000006",
+          "title": "Transporte 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "transporte.json",
+          "file": "transporte-2026-2027.pdf",
+          "idempotencyKey": "seed-transporte-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000007",
+      "topic": "actividades",
+      "title": "Actividades extraescolares",
+      "description": "Oferta de actividades extraescolares, horarios e inscripción para el curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000007",
+          "title": "Actividades 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "actividades.json",
+          "file": "actividades-2026-2027.pdf",
+          "idempotencyKey": "seed-actividades-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000008",
+      "topic": "evaluacion",
+      "title": "Normas de evaluación",
+      "description": "Criterios de evaluación, calificaciones y recuperaciones para el curso 2026-2027.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000008",
+          "title": "Evaluación 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "evaluacion.json",
+          "file": "evaluacion-2026-2027.pdf",
+          "idempotencyKey": "seed-evaluacion-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000009",
+      "topic": "contacto",
+      "title": "Contacto y secretaría",
+      "description": "Dirección, horario de atención, teléfono y correo electrónico del centro.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000009",
+          "title": "Contacto 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "contacto.json",
+          "file": "contacto-2026-2027.pdf",
+          "idempotencyKey": "seed-contacto-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    },
+    {
+      "documentId": "00000000-0000-4000-8000-000000000010",
+      "topic": "jornada",
+      "title": "Jornada escolar",
+      "description": "Horario lectivo y jornada reducida del curso. Documento de versiones anuales.",
+      "versions": [
+        {
+          "versionId": "00000000-0000-4000-8000-100000000010",
+          "title": "Jornada escolar 2025-2026",
+          "academicYear": "2025-2026",
+          "source": "jornada-2025-2026.json",
+          "file": "jornada-2025-2026.pdf",
+          "idempotencyKey": "seed-jornada-2025-2026-v1",
+          "activate": false,
+          "replaced": true
+        },
+        {
+          "versionId": "00000000-0000-4000-8000-100000000011",
+          "title": "Jornada escolar 2026-2027",
+          "academicYear": "2026-2027",
+          "source": "jornada-2026-2027.json",
+          "file": "jornada-2026-2027.pdf",
+          "idempotencyKey": "seed-jornada-2026-2027-v1",
+          "activate": true
+        }
+      ]
+    }
+  ],
+  "replacement": {
+    "topic": "jornada",
+    "documentId": "00000000-0000-4000-8000-000000000010",
+    "previous": {
+      "versionId": "00000000-0000-4000-8000-100000000010",
+      "title": "Jornada escolar 2025-2026",
+      "academicYear": "2025-2026",
+      "source": "jornada-2025-2026.json",
+      "file": "jornada-2025-2026.pdf",
+      "idempotencyKey": "seed-jornada-2025-2026-v1",
+      "activate": false
+    },
+    "current": {
+      "versionId": "00000000-0000-4000-8000-100000000011",
+      "title": "Jornada escolar 2026-2027",
+      "academicYear": "2026-2027",
+      "source": "jornada-2026-2027.json",
+      "file": "jornada-2026-2027.pdf",
+      "idempotencyKey": "seed-jornada-2026-2027-v1",
+      "activate": true
+    }
+  },
+  "conflicts": [
+    {
+      "id": "inicio-de-clases-2026-2027",
+      "subject": "Fecha de inicio de las clases del curso 2026-2027",
+      "claims": [
+        {
+          "documentId": "00000000-0000-4000-8000-000000000001",
+          "versionId": "00000000-0000-4000-8000-100000000001",
+          "page": 1,
+          "claim": "Las clases del curso 2026-2027 comenzarán el 8 de septiembre de 2026."
+        },
+        {
+          "documentId": "00000000-0000-4000-8000-000000000002",
+          "versionId": "00000000-0000-4000-8000-100000000002",
+          "page": 1,
+          "claim": "El curso 2026-2027 comienza el 10 de septiembre de 2026 y finaliza el 22 de junio de 2027."
+        }
+      ]
+    }
+  ]
+}

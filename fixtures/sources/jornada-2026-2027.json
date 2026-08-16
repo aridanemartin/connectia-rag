@@ -1,0 +1,28 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Jornada escolar 2026-2027",
+      "paragraphs": [
+        "La jornada escolar del IES Pinar Ficticio para el curso 2026-2027 se organiza en horario de mañana.",
+        "Las clases comienzan a las 8:30 y terminan a las 14:15 de lunes a viernes.",
+        "El periodo de recreo es de 11:00 a 11:30 todos los días lectivos.",
+        "La entrada al centro se permite a partir de las 8:15. El alumnado debe estar en el aula a las 8:30."
+      ]
+    },
+    {
+      "heading": "Jornada reducida",
+      "paragraphs": [
+        "Durante los meses de septiembre y junio la jornada escolar se reduce al horario de 8:30 a 13:00.",
+        "El recreo en jornada reducida es de 11:00 a 11:15.",
+        "El servicio de comedor no está disponible durante la jornada reducida.",
+        "El transporte escolar se adapta al horario reducido con salidas a las 13:15."
+      ]
+    }
+  ]
+}

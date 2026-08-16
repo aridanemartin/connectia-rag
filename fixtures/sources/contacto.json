@@ -1,0 +1,28 @@
+{
+  "institution": {
+    "name": "IES Pinar Ficticio",
+    "email": "secretaria@iespinarficticio.example.invalid",
+    "phone": "+34 91 000 00 01",
+    "address": "Calle del Pinar Ficticio 42, 28000 Madrid"
+  },
+  "pages": [
+    {
+      "heading": "Contacto y secretaría",
+      "paragraphs": [
+        "El IES Pinar Ficticio está situado en la Calle del Pinar Ficticio 42, 28000 Madrid.",
+        "La secretaría atiende al público de lunes a viernes de 9:00 a 14:00 en horario ininterrumpido.",
+        "El correo electrónico de contacto es secretaria@iespinarficticio.example.invalid.",
+        "El teléfono de la secretaría es +34 91 000 00 01 y el fax es +34 91 000 00 03."
+      ]
+    },
+    {
+      "heading": "Personal de dirección y administración",
+      "paragraphs": [
+        "Directora: doña Aurora Pinar. Horario de atención previa cita: martes y jueves de 10:00 a 12:00.",
+        "Jefe de estudios: don Marcos Robledo. Atención a familias: miércoles de 9:00 a 11:00.",
+        "Secretaria: doña Lucía Pinar. Horario de atención al público de 9:00 a 14:00 de lunes a viernes.",
+        "La página web del centro es https://www.iespinarficticio.example.invalid."
+      ]
+    }
+  ]
+}
