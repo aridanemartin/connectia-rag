@@ -7,6 +7,16 @@ import {
 } from "../../src/rag/qdrant-vector-store.js";
 import type { ChunkPayload } from "../../src/rag/vector-store.js";
 
+const qdrantConstructor = vi.hoisted(() => vi.fn());
+
+vi.mock("@qdrant/js-client-rest", () => ({
+  QdrantClient: class {
+    constructor(options: unknown) {
+      qdrantConstructor(options);
+    }
+  },
+}));
+
 const config = loadConfig({
   AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
   QDRANT_COLLECTION: "connectia_chunks",
@@ -81,6 +91,23 @@ function ollamaTags(models: string[]): Response {
 }
 
 describe("QdrantVectorStore", () => {
+  it("configures the default client with the dependency deadline", () => {
+    const timeoutConfig = loadConfig({
+      AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
+      QDRANT_URL: "http://qdrant.internal:6333",
+      DEPENDENCY_TIMEOUT_MS: "25",
+    });
+    qdrantConstructor.mockClear();
+
+    new QdrantVectorStore(timeoutConfig);
+
+    expect(qdrantConstructor).toHaveBeenCalledWith({
+      url: "http://qdrant.internal:6333",
+      checkCompatibility: false,
+      timeout: 25,
+    });
+  });
+
   it("creates an absent collection with unnamed cosine vectors", async () => {
     const client = fakeQdrant({
       getCollections: vi.fn().mockResolvedValue({ collections: [] }),
@@ -213,6 +240,50 @@ describe("QdrantVectorStore", () => {
 });
 
 describe("OllamaProvider", () => {
+  it("aborts a stalled tag request at the dependency deadline", async () => {
+    vi.useFakeTimers();
+    const timeoutConfig = loadConfig({
+      AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
+      DEPENDENCY_TIMEOUT_MS: "25",
+    });
+    const stalledFetch = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new Error("http://ollama:11434?token=secret"));
+          });
+        }),
+    );
+    const provider = new OllamaProvider(timeoutConfig, {
+      fetch: stalledFetch,
+      chat: { invoke: vi.fn() },
+      embeddings: {
+        embedDocuments: vi.fn(),
+        embedQuery: vi.fn(),
+      },
+    });
+
+    try {
+      let health: Awaited<ReturnType<OllamaProvider["health"]>> | undefined;
+      const check = provider.health().then((value) => {
+        health = value;
+      });
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(health).toEqual({
+        ollama: false,
+        chat: false,
+        embeddings: false,
+        dimensions: 0,
+      });
+      expect(JSON.stringify(health)).not.toContain("token=secret");
+      await check;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses exact Ollama tags and reports the observed embedding dimensions", async () => {
     const embeddings = {
       embedDocuments: vi.fn(),

@@ -30,6 +30,24 @@ function unavailableHealth(): ModelHealth {
   };
 }
 
+function withTimeout(baseFetch: typeof fetch, timeoutMs: number): typeof fetch {
+  return async (input, init) => {
+    const timeoutController = new AbortController();
+    const inputSignal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    const signal = inputSignal
+      ? AbortSignal.any([inputSignal, timeoutController.signal])
+      : timeoutController.signal;
+    const timeout = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+    try {
+      return await baseFetch(input, { ...init, signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
+
 function readModelTags(value: unknown): Set<string> | undefined {
   if (
     typeof value !== "object" ||
@@ -62,22 +80,26 @@ export class OllamaProvider implements ModelProvider {
     private readonly config: AppConfig,
     deps?: OllamaProviderDependencies,
   ) {
-    this.deps =
-      deps ??
-      ({
-        fetch,
-        chat: new ChatOllama({
-          baseUrl: config.OLLAMA_BASE_URL,
-          model: config.OLLAMA_CHAT_MODEL,
-          fetch,
-        }) as ChatBoundary,
-        embeddings: new OllamaEmbeddings({
-          baseUrl: config.OLLAMA_BASE_URL,
-          model: config.OLLAMA_EMBEDDING_MODEL,
-          dimensions: config.EMBEDDING_DIMENSIONS,
-          fetch,
-        }),
-      } satisfies OllamaProviderDependencies);
+    const boundedFetch = withTimeout(
+      deps?.fetch ?? fetch,
+      config.DEPENDENCY_TIMEOUT_MS,
+    );
+    this.deps = deps
+      ? { ...deps, fetch: boundedFetch }
+      : ({
+          fetch: boundedFetch,
+          chat: new ChatOllama({
+            baseUrl: config.OLLAMA_BASE_URL,
+            model: config.OLLAMA_CHAT_MODEL,
+            fetch: boundedFetch,
+          }) as ChatBoundary,
+          embeddings: new OllamaEmbeddings({
+            baseUrl: config.OLLAMA_BASE_URL,
+            model: config.OLLAMA_EMBEDDING_MODEL,
+            dimensions: config.EMBEDDING_DIMENSIONS,
+            fetch: boundedFetch,
+          }),
+        } satisfies OllamaProviderDependencies);
   }
 
   embedDocuments(texts: string[]): Promise<number[][]> {

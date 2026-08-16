@@ -13,8 +13,11 @@ const config = loadConfig({
   EMBEDDING_DIMENSIONS: "2",
 });
 
-function readyService(overrides: Partial<ReadinessCheck> = {}) {
-  return new ReadinessService(config, {
+function readyService(
+  overrides: Partial<ReadinessCheck> = {},
+  readinessConfig = config,
+) {
+  return new ReadinessService(readinessConfig, {
     sqlite: { health: vi.fn().mockResolvedValue(true) },
     vectorStore: {
       ensureCollection: vi.fn(),
@@ -105,6 +108,65 @@ describe("ReadinessService", () => {
     });
     expect(JSON.stringify(result)).not.toContain("private");
     expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  it("finishes stalled dependency checks at the configured safe deadline", async () => {
+    vi.useFakeTimers();
+    const lateVectorFailure = Promise.withResolvers<never>();
+    const stalledModelHealth = new Promise<never>(() => {});
+    const timeoutConfig = loadConfig({
+      AUTH_TOKEN: "test-auth-token-with-at-least-32-characters",
+      EMBEDDING_DIMENSIONS: "2",
+      DEPENDENCY_TIMEOUT_MS: "25",
+    });
+    const readiness = readyService(
+      {
+        vectorStore: {
+          ensureCollection: vi.fn(),
+          upsert: vi.fn(),
+          search: vi.fn(),
+          deleteVersion: vi.fn(),
+          health: () => lateVectorFailure.promise,
+        },
+        modelProvider: {
+          embedDocuments: vi.fn(),
+          embedQuery: vi.fn(),
+          decide: vi.fn(),
+          health: () => stalledModelHealth,
+        },
+      },
+      timeoutConfig,
+    );
+
+    try {
+      let result: Awaited<ReturnType<ReadinessService["check"]>> | undefined;
+      const check = readiness.check().then((value) => {
+        result = value;
+      });
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(result).toEqual({
+        status: "not_ready",
+        dependencies: {
+          sqlite: "ready",
+          qdrant: "not_ready",
+          collection: "not_ready",
+          ollama: "not_ready",
+          chatModel: "not_ready",
+          embeddingModel: "not_ready",
+          embeddingDimensions: "not_ready",
+        },
+      });
+      expect(JSON.stringify(result)).not.toContain("token=secret");
+      lateVectorFailure.reject(
+        new Error("http://qdrant:6333?token=secret should stay private"),
+      );
+      await check;
+      await Promise.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

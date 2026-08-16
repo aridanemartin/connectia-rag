@@ -18,6 +18,7 @@ const envSchema = z.object({
   QDRANT_URL: z.url().default("http://qdrant:6333"),
   QDRANT_COLLECTION: z.string().min(1).default("connectia_documents"),
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1024),
+  DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   MAX_PDF_BYTES: z.coerce
     .number()
     .int()

@@ -34,6 +34,17 @@ export interface Readiness {
   check(): Promise<ReadinessResult>;
 }
 
+export interface ReadinessTimer {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+const systemTimer: ReadinessTimer = {
+  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeout: (handle) =>
+    clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
 const status = (ready: boolean): DependencyStatus =>
   ready ? "ready" : "not_ready";
 
@@ -41,13 +52,14 @@ export class ReadinessService implements Readiness {
   constructor(
     private readonly config: AppConfig,
     private readonly dependencies: ReadinessCheck,
+    private readonly timer: ReadinessTimer = systemTimer,
   ) {}
 
   async check(): Promise<ReadinessResult> {
     const [sqliteResult, vectorResult, modelResult] = await Promise.allSettled([
-      Promise.resolve().then(() => this.dependencies.sqlite.health()),
-      Promise.resolve().then(() => this.dependencies.vectorStore.health()),
-      Promise.resolve().then(() => this.dependencies.modelProvider.health()),
+      this.withDeadline(() => this.dependencies.sqlite.health()),
+      this.withDeadline(() => this.dependencies.vectorStore.health()),
+      this.withDeadline(() => this.dependencies.modelProvider.health()),
     ]);
 
     const sqliteReady =
@@ -74,6 +86,37 @@ export class ReadinessService implements Readiness {
     );
 
     return { status: ready ? "ready" : "not_ready", dependencies };
+  }
+
+  private withDeadline<T>(operation: () => PromiseLike<T> | T): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      let finished = false;
+      const timeout = this.timer.setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          reject(new Error("READINESS_DEPENDENCY_TIMEOUT"));
+        }
+      }, this.config.DEPENDENCY_TIMEOUT_MS);
+
+      Promise.resolve()
+        .then(operation)
+        .then(
+          (value) => {
+            if (!finished) {
+              finished = true;
+              this.timer.clearTimeout(timeout);
+              resolve(value);
+            }
+          },
+          (error: unknown) => {
+            if (!finished) {
+              finished = true;
+              this.timer.clearTimeout(timeout);
+              reject(error);
+            }
+          },
+        );
+    });
   }
 }
 

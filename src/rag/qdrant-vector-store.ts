@@ -105,6 +105,7 @@ export class QdrantVectorStore implements VectorStore {
       new QdrantClient({
         url: config.QDRANT_URL,
         checkCompatibility: false,
+        timeout: config.DEPENDENCY_TIMEOUT_MS,
       });
   }
 
