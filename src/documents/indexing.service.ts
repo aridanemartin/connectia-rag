@@ -3,6 +3,7 @@ import { createReadStream, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { AppError } from "../api/errors.js";
 import type { AppConfig } from "../config/env.js";
+import { DiagnosticsService } from "../diagnostics/diagnostics.service.js";
 import { OllamaProvider } from "../models/ollama-provider.js";
 import {
   closeDatabase,
@@ -11,6 +12,7 @@ import {
 } from "../persistence/database.js";
 import { migrate } from "../persistence/migrate.js";
 import { CleanupRepository } from "../persistence/repositories/cleanup.repository.js";
+import { DiagnosticsRepository } from "../persistence/repositories/diagnostics.repository.js";
 import { DocumentRepository } from "../persistence/repositories/document.repository.js";
 import {
   type IndexingJob,
@@ -194,6 +196,7 @@ export interface IndexingComposition {
   lifecycle: LifecycleService;
   cleanupWorker: CleanupWorker;
   questionService: QuestionService;
+  diagnostics: DiagnosticsService;
   database: DatabaseConnection;
   sweepOrphans(): Promise<number>;
   recoverExpiredJobs(): number;
@@ -250,6 +253,13 @@ export function createIndexingComposition(
       leaseMs: config.INDEXING_LEASE_MS,
       pollIntervalMs: config.INDEXING_POLL_INTERVAL_MS,
     });
+    const diagnosticsRepository = new DiagnosticsRepository(database, clock);
+    const diagnostics = new DiagnosticsService({
+      repository: diagnosticsRepository,
+      enabled: config.DIAGNOSTICS_ENABLED,
+      ttlHours: config.DIAGNOSTICS_TTL_HOURS,
+      clock,
+    });
     const questionService = new QuestionService({
       model: models,
       vectorStore,
@@ -260,6 +270,7 @@ export function createIndexingComposition(
       }),
       topK: config.RAG_TOP_K,
       scoreThreshold: config.RAG_SCORE_THRESHOLD,
+      diagnostics,
     });
     return {
       indexingService,
@@ -268,6 +279,7 @@ export function createIndexingComposition(
       lifecycle,
       cleanupWorker,
       questionService,
+      diagnostics,
       database,
       sweepOrphans: () =>
         sweepOrphanUploads(

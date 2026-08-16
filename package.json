@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "diagnostics": "tsx src/diagnostics/diagnostics.cli.ts"
   },
   "keywords": [],
   "author": "",

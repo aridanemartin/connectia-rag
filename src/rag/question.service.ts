@@ -8,6 +8,15 @@ import {
 import { GROUNDING_SYSTEM_PROMPT } from "./prompt.js";
 import type { VectorStore } from "./vector-store.js";
 
+export interface DiagnosticsRecorder {
+  record(entry: {
+    requestId: string;
+    question: string;
+    answer: string | null;
+    retrievedChunkIds: string[];
+  }): Promise<void>;
+}
+
 export interface QuestionResponse {
   status: "found" | "not_found" | "ambiguous";
   answer: string | null;
@@ -22,6 +31,7 @@ export interface QuestionServiceDependencies {
   };
   topK: number;
   scoreThreshold: number;
+  diagnostics?: DiagnosticsRecorder;
 }
 
 function validateQuestion(question: string): string {
@@ -88,6 +98,7 @@ export class QuestionService {
   private readonly gate: QuestionServiceDependencies["gate"];
   private readonly topK: number;
   private readonly scoreThreshold: number;
+  private readonly diagnostics: QuestionServiceDependencies["diagnostics"];
 
   constructor(deps: QuestionServiceDependencies) {
     this.model = deps.model;
@@ -95,11 +106,13 @@ export class QuestionService {
     this.gate = deps.gate;
     this.topK = deps.topK;
     this.scoreThreshold = deps.scoreThreshold;
+    this.diagnostics = deps.diagnostics;
   }
 
   async ask(
     question: string,
     allowedVersionIds: string[],
+    requestId?: string,
   ): Promise<QuestionResponse> {
     const validatedQuestion = validateQuestion(question);
 
@@ -112,75 +125,90 @@ export class QuestionService {
       this.scoreThreshold,
     );
 
+    const uniqueHits = hits.length === 0 ? [] : deduplicateHits(hits);
+    const retrievedChunkIds = uniqueHits.map((hit) => hit.id);
+
+    let result: QuestionResponse;
     if (hits.length === 0) {
-      return { status: "not_found", answer: null, citations: [] };
-    }
+      result = { status: "not_found", answer: null, citations: [] };
+    } else {
+      const context = uniqueHits.map((hit) => ({
+        chunkId: hit.id,
+        text: hit.payload.text,
+        documentTitle: hit.payload.documentTitle,
+        page: hit.payload.page,
+        section: hit.payload.section,
+      }));
 
-    const uniqueHits = deduplicateHits(hits);
-
-    const context = uniqueHits.map((hit) => ({
-      chunkId: hit.id,
-      text: hit.payload.text,
-      documentTitle: hit.payload.documentTitle,
-      page: hit.payload.page,
-      section: hit.payload.section,
-    }));
-
-    let rawDecision: unknown;
-    try {
-      rawDecision = await this.gate.run(async () => {
-        return this.model.decide({
-          system: GROUNDING_SYSTEM_PROMPT,
-          question: validatedQuestion,
-          context,
-        });
-      });
-    } catch (error) {
-      mapGateError(error);
-    }
-
-    const retrievedIds = new Set(uniqueHits.map((h) => h.id));
-    let decision: AnswerDecision;
-    try {
-      decision = parseAndValidate(rawDecision, retrievedIds);
-    } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code: string }).code === "MODEL_OUTPUT_INVALID"
-      ) {
-        // One repair attempt
-        let retryDecision: unknown;
-        try {
-          retryDecision = await this.gate.run(async () => {
-            return this.model.decide({
-              system: GROUNDING_SYSTEM_PROMPT,
-              question: validatedQuestion,
-              context,
-            });
+      let rawDecision: unknown;
+      try {
+        rawDecision = await this.gate.run(async () => {
+          return this.model.decide({
+            system: GROUNDING_SYSTEM_PROMPT,
+            question: validatedQuestion,
+            context,
           });
-        } catch (gateError) {
-          mapGateError(gateError);
+        });
+      } catch (error) {
+        mapGateError(error);
+      }
+
+      const retrievedIds = new Set(uniqueHits.map((h) => h.id));
+      let decision: AnswerDecision;
+      try {
+        decision = parseAndValidate(rawDecision, retrievedIds);
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code: string }).code === "MODEL_OUTPUT_INVALID"
+        ) {
+          // One repair attempt
+          let retryDecision: unknown;
+          try {
+            retryDecision = await this.gate.run(async () => {
+              return this.model.decide({
+                system: GROUNDING_SYSTEM_PROMPT,
+                question: validatedQuestion,
+                context,
+              });
+            });
+          } catch (gateError) {
+            mapGateError(gateError);
+          }
+          decision = parseAndValidate(retryDecision, retrievedIds);
+        } else {
+          throw error;
         }
-        decision = parseAndValidate(retryDecision, retrievedIds);
+      }
+
+      if (decision.status === "found") {
+        result = {
+          status: "found",
+          answer: decision.answer,
+          citations: buildCitations(decision.citedChunkIds, uniqueHits),
+        };
       } else {
-        throw error;
+        result = {
+          status: decision.status,
+          answer: null,
+          citations: [],
+        };
       }
     }
 
-    if (decision.status === "found") {
-      return {
-        status: "found",
-        answer: decision.answer,
-        citations: buildCitations(decision.citedChunkIds, uniqueHits),
-      };
-    }
+    await this.diagnostics
+      ?.record({
+        requestId: requestId ?? "auto",
+        question: validatedQuestion,
+        answer: result.answer,
+        retrievedChunkIds,
+      })
+      .catch(() => {
+        // Diagnostics must never break question answering
+      });
 
-    return {
-      status: decision.status,
-      answer: null,
-      citations: [],
-    };
+    return result;
   }
 }
