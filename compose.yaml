@@ -1,0 +1,125 @@
+# ──────────────────────────────────────────────────────────────────────────
+# compose.yaml  —  Production Docker Compose for the Connectia RAG stack
+#
+# How to update pinned images
+# ──────────────────────────────────────────────────────────────────────────
+# 1. Change the tag below (e.g. ollama/ollama:0.33.0).
+# 2. Update the policy test at tests/contract/compose-config.test.ts if the
+#    pin helper (isPinnedImage) needs adjustment for the new pattern.
+# 3. Run: npm test -- tests/contract/compose-config.test.ts
+# 4. When Docker is available, also run:
+#       docker compose -f compose.yaml config --quiet
+# ──────────────────────────────────────────────────────────────────────────
+name: connectia-rag-demo
+
+services:
+
+  # ── API ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_PATH: /data/sqlite/connectia.sqlite
+      TEMP_DIR: /data/tmp
+      OLLAMA_BASE_URL: http://ollama:11434
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - api_data:/data
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      model-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Ollama inference server ────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:0.32.5
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Model initialiser (one-shot) ───────────────────────────────────────
+  model-init:
+    image: ollama/ollama:0.32.5
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ollama_models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama pull "${OLLAMA_CHAT_MODEL:-gemma3:12b}"
+        ollama pull "${OLLAMA_EMBEDDING_MODEL:-qwen3-embedding:0.6b}"
+        echo "Todos los modelos están listos"
+    restart: "no"
+
+  # ── Qdrant vector database ─────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.18.3
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/6333",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Caddy reverse proxy (public ingress) ───────────────────────────────
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  api_data:
+  ollama_models:
+  qdrant_data:

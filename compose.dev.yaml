@@ -1,0 +1,26 @@
+# ──────────────────────────────────────────────────────────────────────────
+# compose.dev.yaml  —  Development overrides for the local RAG stack
+#
+# Exposes API, Ollama, and Qdrant on loopback so tools on the host (curl,
+# tsx, GUI clients) can reach them directly during development.
+# ──────────────────────────────────────────────────────────────────────────
+
+services:
+  api:
+    build:
+      target: dev
+    command: npm run dev
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - api_data:/data
+
+  ollama:
+    ports:
+      - "127.0.0.1:11434:11434"
+
+  qdrant:
+    ports:
+      - "127.0.0.1:6333:6333"
