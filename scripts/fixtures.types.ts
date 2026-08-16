@@ -125,3 +125,31 @@ export interface SeedVersionResult {
 export interface SeedSummary {
   seededVersions: SeedVersionResult[];
 }
+
+export interface GenerateOptions {
+  manifest: CorpusManifest;
+  sourcesDir: string;
+  outputDir: string;
+}
+
+export interface SeedOptions {
+  apiUrl: string;
+  authToken: string;
+  manifest: CorpusManifest;
+  pdfsDir: string;
+  initialBackoffMs?: number;
+  maxBackoffMs?: number;
+  maxPollAttempts?: number;
+  maxTransientErrors?: number;
+}
+
+export interface ApiErrorBody {
+  error?: { code?: string; message?: string };
+}
+
+export interface PollResult {
+  jobId: string;
+  status: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+}

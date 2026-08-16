@@ -2,25 +2,17 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  ApiErrorBody,
   CorpusManifest,
+  PollResult,
+  SeedOptions,
   SeedSummary,
   SeedVersionResult,
 } from "./fixtures.types.js";
 
 // ---------------------------------------------------------------------------
-// Types
+// Error classes
 // ---------------------------------------------------------------------------
-
-export interface SeedOptions {
-  apiUrl: string;
-  authToken: string;
-  manifest: CorpusManifest;
-  pdfsDir: string;
-  initialBackoffMs?: number;
-  maxBackoffMs?: number;
-  maxPollAttempts?: number;
-  maxTransientErrors?: number;
-}
 
 export class SeedError extends Error {
   code = "SEED_FAILED";
@@ -52,10 +44,6 @@ async function apiFetch(
   return response;
 }
 
-interface ApiErrorBody {
-  error?: { code?: string; message?: string };
-}
-
 async function parseApiError(response: Response): Promise<string> {
   let body: ApiErrorBody = {};
   try {
@@ -73,13 +61,6 @@ async function parseApiError(response: Response): Promise<string> {
 // ---------------------------------------------------------------------------
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface PollResult {
-  jobId: string;
-  status: string;
-  errorCode: string | null;
-  errorMessage: string | null;
-}
 
 async function pollUntilTerminal(
   apiUrl: string,

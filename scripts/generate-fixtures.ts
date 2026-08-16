@@ -7,6 +7,7 @@ import type {
   CorpusManifest,
   FixtureInstitution,
   FixtureSource,
+  GenerateOptions,
   GeneratedPdfInfo,
   GenerationSummary,
 } from "./fixtures.types.js";
@@ -37,14 +38,8 @@ const FOOTER_Y = 50;
 const FOOTER_SIZE = 8;
 
 // ---------------------------------------------------------------------------
-// Public types
+// Error classes
 // ---------------------------------------------------------------------------
-
-export interface GenerateOptions {
-  manifest: CorpusManifest;
-  sourcesDir: string;
-  outputDir: string;
-}
 
 export class FixtureLayoutError extends Error {
   code = "FIXTURE_LAYOUT_EXCEEDED";
