@@ -110,7 +110,7 @@ Extended `IndexingComposition` to include `lifecycle: LifecycleService`,
   `AbortSignal.any([activity.signal, cleanupTeardown.signal])` construction.
 - Wires `composition.lifecycle` into the `AppDependencies` object.
 
-### `tests/integration/document-lifecycle.test.ts` (new, 15 tests)
+### `tests/integration/document-lifecycle.test.ts` (new, 18 tests)
 
 **LifecycleService tests (7):**
 1. Activates a READY version and returns ACTIVE
@@ -134,6 +134,11 @@ Extended `IndexingComposition` to include `lifecycle: LifecycleService`,
 1. `allowedActiveVersions` never includes archived versions — verifies the
    structural invariant that SQLite-derived version lists are the only input
    to vector store search, with a mock `fakeVectorStore.search()` assertion.
+
+**HTTP route tests (3):**
+1. Activate via POST returns 200 with correct state
+2. Unauthenticated request returns 401
+3. Malformed UUID params return 400 DOCUMENT_PARAMS_INVALID
 
 ## Deviations from the brief
 
