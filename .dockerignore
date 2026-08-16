@@ -1,0 +1,34 @@
+# ──────────────────────────────────────────────────────────────────────────
+# .dockerignore — keep the build context lean and avoid leaking secrets
+# ──────────────────────────────────────────────────────────────────────────
+
+.git/
+.gitignore
+.gitattributes
+
+node_modules/
+
+dist/
+
+coverage/
+
+data/
+tmp/
+
+*.sqlite*
+*.sqlite3*
+
+.env
+.env.local
+
+.DS_Store
+
+*.md
+LICENSE
+
+tests/
+docs/
+
+docker-compose*.yml
+compose*.yaml
+Caddyfile

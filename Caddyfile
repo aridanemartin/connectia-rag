@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Caddyfile  —  Production reverse-proxy for the Connectia RAG API
+#
+# Usage
+# ──────────────────────────────────────────────────────────────────────────
+# Set SITE_ADDRESS in your .env:
+#   SITE_ADDRESS=:80                    # local / plain HTTP
+#   SITE_ADDRESS=rag.example.com        # production with auto-TLS
+#
+# The 25 MB request body limit matches the default MAX_PDF_BYTES value in
+# src/config/env.ts.  X-Request-Id is forwarded from the client so the API
+# can correlate it across the stack.
+# ──────────────────────────────────────────────────────────────────────────
+
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy api:3000 {
+		header_up X-Request-Id {http.request.header.X-Request-Id}
+	}
+}

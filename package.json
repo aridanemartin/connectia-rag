@@ -13,7 +13,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "wait:models": "node scripts/wait-for-models.ts",
+    "compose:up": "docker compose up -d --build",
+    "compose:down": "docker compose down",
+    "compose:dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build"
   },
   "keywords": [],
   "author": "",
@@ -54,6 +58,7 @@
     "supertest": "^7.2.2",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
   }
 }
