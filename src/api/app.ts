@@ -3,6 +3,11 @@ import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
 import { type AppConfig, loadConfig } from "../config/env.js";
 import {
+  createIndexingComposition,
+  type IndexingComposition,
+  type IndexingEnqueuer,
+} from "../documents/indexing.service.js";
+import {
   createDefaultReadiness,
   type Readiness,
 } from "../health/readiness.service.js";
@@ -12,17 +17,30 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
 import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
 import { createHealthRouter } from "./routes/health.js";
+import { createIndexingRouter } from "./routes/indexing.js";
 
 export interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   readiness: Readiness;
+  indexingService: IndexingEnqueuer;
+}
+
+function lazyIndexingService(config: AppConfig): IndexingEnqueuer {
+  let composition: IndexingComposition | undefined;
+  return {
+    enqueue: (input) => {
+      composition ??= createIndexingComposition(config);
+      return composition.indexingService.enqueue(input);
+    },
+  };
 }
 
 export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const config = deps.config ?? loadConfig(process.env);
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const readiness = deps.readiness ?? createDefaultReadiness(config);
+  const indexingService = deps.indexingService ?? lazyIndexingService(config);
   const app = express();
   const openApiDocument = createOpenApiDocument();
   const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
@@ -43,6 +61,10 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   );
   app.use("/health", createHealthRouter(readiness));
   app.use(authenticate(config));
+  app.use(
+    "/api/v1/indexing/jobs",
+    createIndexingRouter(config, indexingService),
+  );
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);
   });

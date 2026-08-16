@@ -323,9 +323,7 @@ export class IndexingJobRepository {
     return recover();
   }
 
-  private findByIdempotencyKey(
-    idempotencyKey: string,
-  ): IndexingJob | undefined {
+  findByIdempotencyKey(idempotencyKey: string): IndexingJob | undefined {
     const row = this.database
       .prepare<[string], IndexingJobRow>(
         "SELECT * FROM indexing_jobs WHERE idempotency_key = ?",
