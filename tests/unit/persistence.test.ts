@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it } from "vitest";
+import { InvalidStateTransitionError } from "../../src/documents/document.types.js";
 import { closeDatabase, openDatabase } from "../../src/persistence/database.js";
 import { type Migration, migrate } from "../../src/persistence/migrate.js";
 import { CleanupRepository } from "../../src/persistence/repositories/cleanup.repository.js";
@@ -58,6 +60,65 @@ function indexingJob(documentId = randomUUID(), versionId = randomUUID()) {
     contentHash: `content-hash-${versionId}`,
     tempFilePath: `/tmp/${versionId}.pdf`,
   };
+}
+
+function runConcurrentMigration(
+  databasePath: string,
+  barrier: SharedArrayBuffer,
+): Promise<{ ok: boolean; error?: string }> {
+  const databaseModuleUrl = new URL(
+    "../../src/persistence/database.ts",
+    import.meta.url,
+  ).href;
+  const migrateModuleUrl = new URL(
+    "../../src/persistence/migrate.ts",
+    import.meta.url,
+  ).href;
+  const source = `
+    import { parentPort, workerData } from "node:worker_threads";
+    import { closeDatabase, openDatabase } from ${JSON.stringify(databaseModuleUrl)};
+    import { migrate } from ${JSON.stringify(migrateModuleUrl)};
+
+    const barrier = new Int32Array(workerData.barrier);
+    let reads = 0;
+    const sql = "CREATE TABLE IF NOT EXISTS concurrent_probe (id TEXT PRIMARY KEY);";
+    const migration = {
+      id: "concurrent_migration",
+      get sql() {
+        reads += 1;
+        if (reads === 2) {
+          const arrivals = Atomics.add(barrier, 0, 1) + 1;
+          if (arrivals < 2) {
+            Atomics.wait(barrier, 0, arrivals, 5_000);
+          } else {
+            Atomics.notify(barrier, 0);
+          }
+        }
+        return sql;
+      },
+    };
+    const database = openDatabase(workerData.databasePath);
+    try {
+      migrate(database, [migration]);
+      parentPort.postMessage({ ok: true });
+    } catch (error) {
+      parentPort.postMessage({ ok: false, error: String(error) });
+    } finally {
+      closeDatabase(database);
+    }
+  `;
+
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL(`data:text/javascript,${encodeURIComponent(source)}`),
+      {
+        execArgv: ["--import", "tsx"],
+        workerData: { databasePath, barrier },
+      },
+    );
+    worker.once("message", resolve);
+    worker.once("error", reject);
+  });
 }
 
 describe("SQLite migrations", () => {
@@ -127,6 +188,29 @@ describe("SQLite migrations", () => {
     expect(database.pragma("foreign_keys", { simple: true })).toBe(1);
     expect(database.pragma("busy_timeout", { simple: true })).toBe(5000);
 
+    closeDatabase(database);
+  });
+
+  it("serializes concurrent migration lookup and application", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "connectia-migrations-"));
+    databaseDirectories.push(directory);
+    const databasePath = join(directory, "concurrent.sqlite");
+    const barrier = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+
+    const results = await Promise.all([
+      runConcurrentMigration(databasePath, barrier),
+      runConcurrentMigration(databasePath, barrier),
+    ]);
+
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    const database = openDatabase(databasePath);
+    expect(
+      database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM schema_migrations WHERE id = 'concurrent_migration'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
     closeDatabase(database);
   });
 });
@@ -216,6 +300,54 @@ describe("DocumentRepository", () => {
     expect(
       documents.previewVersionIds(candidate.documentId, candidate.versionId),
     ).toEqual([candidate.versionId, other.versionId].sort());
+
+    closeDatabase(database);
+  });
+
+  it("rejects markReady when another transition wins the guarded update", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const version = indexingVersion();
+    new DocumentRepository(database, clock).upsertIndexing(version);
+    const racingClock: Clock = {
+      now: () => {
+        database
+          .prepare(
+            "UPDATE document_versions SET state = 'ARCHIVED' WHERE id = ?",
+          )
+          .run(version.versionId);
+        return new Date("2026-08-16T10:00:01.000Z");
+      },
+    };
+
+    expect(() =>
+      new DocumentRepository(database, racingClock).markReady(
+        version.versionId,
+      ),
+    ).toThrow(InvalidStateTransitionError);
+
+    closeDatabase(database);
+  });
+
+  it("rejects markFailed when another transition wins the guarded update", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const version = indexingVersion();
+    new DocumentRepository(database, clock).upsertIndexing(version);
+    const racingClock: Clock = {
+      now: () => {
+        database
+          .prepare("UPDATE document_versions SET state = 'READY' WHERE id = ?")
+          .run(version.versionId);
+        return new Date("2026-08-16T10:00:01.000Z");
+      },
+    };
+
+    expect(() =>
+      new DocumentRepository(database, racingClock).markFailed(
+        version.versionId,
+      ),
+    ).toThrow(InvalidStateTransitionError);
 
     closeDatabase(database);
   });
@@ -319,8 +451,8 @@ describe("IndexingJobRepository", () => {
     );
 
     expect(jobs.leaseNext("worker-a", 30_000)?.id).toBe(first.id);
-    jobs.progress(first.id, "embedding", 55);
-    jobs.complete(first.id);
+    jobs.progress(first.id, "worker-a", "embedding", 55);
+    jobs.complete(first.id, "worker-a");
 
     expect(jobs.find(first.id)).toMatchObject({
       status: "completed",
@@ -388,6 +520,71 @@ describe("IndexingJobRepository", () => {
 
     closeDatabase(database);
   });
+
+  it("rejects indexing progress from a non-owner", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const jobs = new IndexingJobRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const job = jobs.enqueue(
+      indexingJob(version.documentId, version.versionId),
+    );
+    jobs.leaseNext("worker-a", 1_000);
+
+    expect(() => jobs.progress(job.id, "worker-b", "embedding", 55)).toThrow(
+      /lease/i,
+    );
+    expect(jobs.find(job.id)).toMatchObject({
+      status: "processing",
+      stage: "queued",
+      progress: 0,
+      leaseOwner: "worker-a",
+    });
+
+    closeDatabase(database);
+  });
+
+  it("treats the exact indexing lease deadline as expired", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const jobs = new IndexingJobRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const job = jobs.enqueue(
+      indexingJob(version.documentId, version.versionId),
+    );
+    jobs.leaseNext("worker-a", 1_000);
+    clock.advance(1_000);
+
+    expect(() => jobs.complete(job.id, "worker-a")).toThrow(/lease/i);
+    expect(jobs.find(job.id)?.status).toBe("processing");
+
+    closeDatabase(database);
+  });
+
+  it("fences the previous indexing owner after lease reassignment", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const jobs = new IndexingJobRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const job = jobs.enqueue(
+      indexingJob(version.documentId, version.versionId),
+    );
+    jobs.leaseNext("worker-a", 1_000);
+    clock.advance(1_001);
+    jobs.recoverExpired();
+    jobs.leaseNext("worker-b", 1_000);
+
+    expect(() => jobs.complete(job.id, "worker-a")).toThrow(/lease/i);
+    expect(jobs.complete(job.id, "worker-b")?.status).toBe("completed");
+
+    closeDatabase(database);
+  });
 });
 
 describe("CleanupRepository", () => {
@@ -404,6 +601,7 @@ describe("CleanupRepository", () => {
     expect(cleanups.leaseNext("cleanup-a", 5_000)?.status).toBe("processing");
     cleanups.retry(
       cleanup.id,
+      "cleanup-a",
       "VECTOR_STORE_UNAVAILABLE",
       "Reintento seguro",
       2_000,
@@ -411,7 +609,7 @@ describe("CleanupRepository", () => {
     expect(cleanups.leaseNext("cleanup-b", 5_000)).toBeUndefined();
     clock.advance(2_001);
     expect(cleanups.leaseNext("cleanup-b", 5_000)?.attempts).toBe(2);
-    expect(cleanups.complete(cleanup.id)).toBe(true);
+    expect(cleanups.complete(cleanup.id, "cleanup-b")).toBe(true);
     expect(cleanups.findByVersion(version.versionId)).toBeUndefined();
 
     closeDatabase(database);
@@ -430,6 +628,78 @@ describe("CleanupRepository", () => {
 
     expect(cleanups.recoverExpired()).toBe(1);
     expect(cleanups.find(cleanup.id)?.status).toBe("queued");
+
+    closeDatabase(database);
+  });
+
+  it("rejects cleanup retry from a non-owner", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const cleanups = new CleanupRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const cleanup = cleanups.enqueue(version.versionId);
+    cleanups.leaseNext("cleanup-a", 1_000);
+
+    expect(() =>
+      cleanups.retry(
+        cleanup.id,
+        "cleanup-b",
+        "VECTOR_STORE_UNAVAILABLE",
+        "Reintento seguro",
+        10,
+      ),
+    ).toThrow(/lease/i);
+    expect(cleanups.find(cleanup.id)).toMatchObject({
+      status: "processing",
+      leaseOwner: "cleanup-a",
+      attempts: 1,
+    });
+
+    closeDatabase(database);
+  });
+
+  it("treats the exact cleanup lease deadline as expired", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const cleanups = new CleanupRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const cleanup = cleanups.enqueue(version.versionId);
+    cleanups.leaseNext("cleanup-a", 1_000);
+    clock.advance(1_000);
+
+    expect(() => cleanups.complete(cleanup.id, "cleanup-a")).toThrow(/lease/i);
+    expect(cleanups.find(cleanup.id)?.status).toBe("processing");
+
+    closeDatabase(database);
+  });
+
+  it("fences the previous cleanup owner after lease reassignment", () => {
+    const database = createTestDatabase();
+    const clock = new MutableClock(new Date("2026-08-16T10:00:00.000Z"));
+    const documents = new DocumentRepository(database, clock);
+    const cleanups = new CleanupRepository(database, clock);
+    const version = indexingVersion();
+    documents.upsertIndexing(version);
+    const cleanup = cleanups.enqueue(version.versionId);
+    cleanups.leaseNext("cleanup-a", 1_000);
+    clock.advance(1_001);
+    cleanups.recoverExpired();
+    cleanups.leaseNext("cleanup-b", 1_000);
+
+    expect(() =>
+      cleanups.retry(
+        cleanup.id,
+        "cleanup-a",
+        "VECTOR_STORE_UNAVAILABLE",
+        "Reintento seguro",
+        10,
+      ),
+    ).toThrow(/lease/i);
+    expect(cleanups.complete(cleanup.id, "cleanup-b")).toBe(true);
 
     closeDatabase(database);
   });

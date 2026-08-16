@@ -208,7 +208,12 @@ export class IndexingJobRepository {
     return lease();
   }
 
-  progress(jobId: string, stage: string, progress: number): IndexingJob {
+  progress(
+    jobId: string,
+    owner: string,
+    stage: string,
+    progress: number,
+  ): IndexingJob {
     if (
       !stage ||
       !Number.isInteger(progress) ||
@@ -222,17 +227,18 @@ export class IndexingJobRepository {
       .prepare(
         `
           UPDATE indexing_jobs SET stage = ?, progress = ?, updated_at = ?
-          WHERE id = ? AND status = 'processing'
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
         `,
       )
-      .run(stage, progress, now, jobId);
+      .run(stage, progress, now, jobId, owner, now);
     if (result.changes !== 1) {
-      throw new InvalidJobStateError(jobId, "processing");
+      throw new LeaseLostError("Indexing", jobId, owner);
     }
     return this.require(jobId);
   }
 
-  complete(jobId: string): IndexingJob {
+  complete(jobId: string, owner: string): IndexingJob {
     const now = this.clock.now().toISOString();
     const result = this.database
       .prepare(
@@ -241,12 +247,13 @@ export class IndexingJobRepository {
           SET status = 'completed', stage = 'completed', progress = 100,
               lease_owner = NULL, lease_until = NULL, error_code = NULL,
               error_message = NULL, updated_at = ?, completed_at = ?
-          WHERE id = ? AND status = 'processing'
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
         `,
       )
-      .run(now, now, jobId);
+      .run(now, now, jobId, owner, now);
     if (result.changes !== 1) {
-      throw new InvalidJobStateError(jobId, "processing");
+      throw new LeaseLostError("Indexing", jobId, owner);
     }
     return this.require(jobId);
   }
@@ -340,5 +347,12 @@ class InvalidJobStateError extends Error {
   constructor(jobId: string, expected: string) {
     super(`Indexing job ${jobId} must be ${expected}`);
     this.name = "InvalidJobStateError";
+  }
+}
+
+class LeaseLostError extends Error {
+  constructor(kind: string, jobId: string, owner: string) {
+    super(`${kind} job ${jobId} does not have an active lease for ${owner}`);
+    this.name = "LeaseLostError";
   }
 }

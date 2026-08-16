@@ -151,6 +151,7 @@ export class CleanupRepository {
 
   retry(
     jobId: string,
+    owner: string,
     code: string,
     message: string,
     delayMs: number,
@@ -167,7 +168,8 @@ export class CleanupRepository {
           UPDATE vector_cleanup_jobs
           SET status = 'queued', available_at = ?, lease_owner = NULL,
               lease_until = NULL, error_code = ?, error_message = ?, updated_at = ?
-          WHERE id = ? AND status = 'processing'
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
         `,
       )
       .run(
@@ -176,19 +178,29 @@ export class CleanupRepository {
         safeErrorMessage(message),
         now,
         jobId,
+        owner,
+        now,
       );
     if (result.changes !== 1) {
-      throw new Error(`Cleanup job ${jobId} must be processing`);
+      throw new LeaseLostError(jobId, owner);
     }
     return this.require(jobId);
   }
 
-  complete(jobId: string): boolean {
-    return (
-      this.database
-        .prepare("DELETE FROM vector_cleanup_jobs WHERE id = ?")
-        .run(jobId).changes === 1
-    );
+  complete(jobId: string, owner: string): boolean {
+    const result = this.database
+      .prepare(
+        `
+          DELETE FROM vector_cleanup_jobs
+          WHERE id = ? AND status = 'processing' AND lease_owner = ?
+            AND lease_until IS NOT NULL AND lease_until > ?
+        `,
+      )
+      .run(jobId, owner, this.clock.now().toISOString());
+    if (result.changes !== 1) {
+      throw new LeaseLostError(jobId, owner);
+    }
+    return true;
   }
 
   recoverExpired(): number {
@@ -211,5 +223,12 @@ export class CleanupRepository {
       throw new PersistenceNotFoundError(`Cleanup job ${jobId} was not found`);
     }
     return job;
+  }
+}
+
+class LeaseLostError extends Error {
+  constructor(jobId: string, owner: string) {
+    super(`Cleanup job ${jobId} does not have an active lease for ${owner}`);
+    this.name = "LeaseLostError";
   }
 }

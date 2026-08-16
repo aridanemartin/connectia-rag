@@ -48,19 +48,9 @@ export function migrate(
   const recordApplied = database.prepare(
     "INSERT INTO schema_migrations (id, checksum, applied_at) VALUES (?, ?, ?)",
   );
-  const applyMigration = database.transaction(
-    (migration: Migration, migrationChecksum: string) => {
-      database.exec(migration.sql);
-      recordApplied.run(
-        migration.id,
-        migrationChecksum,
-        clock.now().toISOString(),
-      );
-    },
-  );
-
-  for (const migration of migrations) {
-    const migrationChecksum = checksum(migration.sql);
+  const applyMigration = database.transaction((migration: Migration) => {
+    const sql = migration.sql;
+    const migrationChecksum = checksum(sql);
     const applied = findApplied.get(migration.id);
     if (applied) {
       if (applied.checksum !== migrationChecksum) {
@@ -68,8 +58,17 @@ export function migrate(
           `Migration ${migration.id} checksum does not match the applied migration`,
         );
       }
-      continue;
+      return;
     }
-    applyMigration(migration, migrationChecksum);
+    database.exec(sql);
+    recordApplied.run(
+      migration.id,
+      migrationChecksum,
+      clock.now().toISOString(),
+    );
+  }).immediate;
+
+  for (const migration of migrations) {
+    applyMigration(migration);
   }
 }

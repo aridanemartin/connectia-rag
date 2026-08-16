@@ -149,7 +149,7 @@ export class DocumentRepository {
       );
     }
     const now = this.clock.now().toISOString();
-    this.database
+    const result = this.database
       .prepare(
         `
           UPDATE document_versions
@@ -158,6 +158,11 @@ export class DocumentRepository {
         `,
       )
       .run(now, now, versionId);
+    if (result.changes !== 1) {
+      throw new InvalidStateTransitionError(
+        `Version ${versionId} changed before the READY transition completed`,
+      );
+    }
     return this.requireVersion(versionId);
   }
 
@@ -172,7 +177,7 @@ export class DocumentRepository {
       );
     }
     const now = this.clock.now().toISOString();
-    this.database
+    const result = this.database
       .prepare(
         `
           UPDATE document_versions
@@ -181,6 +186,11 @@ export class DocumentRepository {
         `,
       )
       .run(now, now, versionId);
+    if (result.changes !== 1) {
+      throw new InvalidStateTransitionError(
+        `Version ${versionId} changed before the FAILED transition completed`,
+      );
+    }
     return this.requireVersion(versionId);
   }
 
