@@ -3,7 +3,10 @@ import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
 import { type AppConfig, loadConfig } from "../config/env.js";
 import type { IndexingEnqueuer } from "../documents/indexing.service.js";
-import type { UploadUnlink } from "../documents/upload-storage.js";
+import type {
+  UploadFailureReporter,
+  UploadUnlink,
+} from "../documents/upload-storage.js";
 import {
   createDefaultReadiness,
   type Readiness,
@@ -23,6 +26,7 @@ export interface AppDependencies {
   readiness: Readiness;
   indexingService: IndexingEnqueuer;
   uploadUnlink: UploadUnlink;
+  uploadFailureReporter: UploadFailureReporter;
   activity: ActivityTracker;
 }
 
@@ -44,6 +48,14 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const readiness = deps.readiness ?? createDefaultReadiness(config);
   const indexingService = deps.indexingService ?? unavailableIndexingService();
   const activity = deps.activity ?? new ActivityTracker();
+  const uploadFailureReporter: UploadFailureReporter =
+    deps.uploadFailureReporter ??
+    ((report) => {
+      logger.error(
+        { uploadFailure: report },
+        "No se ha podido limpiar una carga temporal.",
+      );
+    });
   const app = express();
   const openApiDocument = createOpenApiDocument();
   const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
@@ -66,7 +78,13 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
-    createIndexingRouter(config, indexingService, deps.uploadUnlink, activity),
+    createIndexingRouter(
+      config,
+      indexingService,
+      deps.uploadUnlink,
+      activity,
+      uploadFailureReporter,
+    ),
   );
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);

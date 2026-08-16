@@ -1,4 +1,6 @@
+import { realpathSync } from "node:fs";
 import type { Server } from "node:http";
+import { fileURLToPath } from "node:url";
 import { type AppDependencies, createApp } from "./api/app.js";
 import { type AppConfig, loadConfig } from "./config/env.js";
 import {
@@ -36,6 +38,29 @@ export interface RunningServer {
   composition: IndexingComposition;
   activity: ActivityTracker;
   shutdown(): Promise<void>;
+}
+
+export interface DirectExecutionInput {
+  importMetaMain: boolean | undefined;
+  moduleUrl: string;
+  argvEntry: string | undefined;
+}
+
+export function isDirectExecution(input: DirectExecutionInput): boolean {
+  if (input.importMetaMain === true) {
+    return true;
+  }
+  if (!input.argvEntry) {
+    return false;
+  }
+  try {
+    return (
+      realpathSync.native(fileURLToPath(input.moduleUrl)) ===
+      realpathSync.native(input.argvEntry)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function listen(application: ReturnType<ApplicationFactory>, port: number) {
@@ -171,7 +196,13 @@ export async function startServer(
   return { server, composition, activity, shutdown };
 }
 
-if (import.meta.main) {
+if (
+  isDirectExecution({
+    importMetaMain: import.meta.main,
+    moduleUrl: import.meta.url,
+    argvEntry: process.argv[1],
+  })
+) {
   void startServer().catch(() => {
     console.error("No se ha podido iniciar la API RAG de Connectia.");
     process.exitCode = 1;

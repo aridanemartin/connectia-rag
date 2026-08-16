@@ -22,6 +22,15 @@ export const SERVER_UPLOAD_FILENAME_PATTERN =
 
 export type UploadUnlink = (path: string) => Promise<void>;
 
+export interface UploadFailureReport {
+  code: "UPLOAD_CLEANUP_FAILED";
+  phase: "terminal_cleanup";
+}
+
+export type UploadFailureReporter = (
+  report: Readonly<UploadFailureReport>,
+) => void | Promise<void>;
+
 export class UploadStorageError extends Error {
   constructor() {
     super("Upload storage is unavailable");
@@ -98,7 +107,25 @@ export class SecureUploadStorage implements multer.StorageEngine {
     private readonly directory: string,
     private readonly cleaner: RetryingUploadCleaner,
     private readonly activity?: ActivityTracker,
+    private readonly reportFailure?: UploadFailureReporter,
   ) {}
+
+  private reportCleanupFailure(): void {
+    if (!this.reportFailure) {
+      return;
+    }
+    try {
+      const result = this.reportFailure(
+        Object.freeze({
+          code: "UPLOAD_CLEANUP_FAILED",
+          phase: "terminal_cleanup",
+        }),
+      );
+      void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // Reporting is a contained observation boundary and never owns settlement.
+    }
+  }
 
   _handleFile(
     request: Request,
@@ -177,7 +204,10 @@ export class SecureUploadStorage implements multer.StorageEngine {
       const fileRemoved = this.cleaner.remove(path);
       void Promise.all([outputClosed, fileRemoved]).then(
         () => finish(new UploadStorageError()),
-        () => finish(new UploadCleanupError()),
+        () => {
+          this.reportCleanupFailure();
+          finish(new UploadCleanupError());
+        },
       );
     };
 

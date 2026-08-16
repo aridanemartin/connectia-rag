@@ -12,6 +12,7 @@ import {
   RetryingUploadCleaner,
   SecureUploadStorage,
   UploadCleanupError,
+  type UploadFailureReporter,
   UploadStorageError,
   type UploadUnlink,
 } from "../../documents/upload-storage.js";
@@ -50,8 +51,14 @@ function uploadMiddleware(
   config: AppConfig,
   cleaner: RetryingUploadCleaner,
   activity?: ActivityTracker,
+  reportFailure?: UploadFailureReporter,
 ): RequestHandler {
-  const storage = new SecureUploadStorage(config.TEMP_DIR, cleaner, activity);
+  const storage = new SecureUploadStorage(
+    config.TEMP_DIR,
+    cleaner,
+    activity,
+    reportFailure,
+  );
   // The lockfile pins Multer 2.2.0 to Busboy 1.6.0. Busboy itself enforces a
   // finite 16 KiB/2,000-pair part-header boundary; it has no configurable
   // headerPairs option. The raw-wire integration test guards that real limit.
@@ -222,10 +229,11 @@ export function createIndexingRouter(
   indexingService: IndexingEnqueuer,
   uploadUnlink?: UploadUnlink,
   activity?: ActivityTracker,
+  reportFailure?: UploadFailureReporter,
 ): Router {
   const router = Router();
   const cleaner = new RetryingUploadCleaner(uploadUnlink);
-  const upload = uploadMiddleware(config, cleaner, activity);
+  const upload = uploadMiddleware(config, cleaner, activity, reportFailure);
 
   router.post("/", (request, response, next) => {
     const execute = async (signal?: AbortSignal) => {

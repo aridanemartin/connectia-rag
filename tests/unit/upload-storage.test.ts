@@ -99,6 +99,7 @@ function createStorageCall(
   directory: string,
   cleaner = new RetryingUploadCleaner(),
   activity?: ActivityTracker,
+  reportFailure?: (report: unknown) => void | Promise<void>,
 ) {
   const request = new EventEmitter() as Request;
   const stream = new PassThrough();
@@ -108,14 +109,15 @@ function createStorageCall(
     error: unknown;
     info: Partial<Express.Multer.File> | undefined;
   }>();
-  new SecureUploadStorage(directory, cleaner, activity)._handleFile(
-    request,
-    file,
-    (error, info) => {
-      callbackCalls += 1;
-      completed.resolve({ error, info });
-    },
-  );
+  new SecureUploadStorage(
+    directory,
+    cleaner,
+    activity,
+    reportFailure,
+  )._handleFile(request, file, (error, info) => {
+    callbackCalls += 1;
+    completed.resolve({ error, info });
+  });
   return {
     callbackCalls: () => callbackCalls,
     completed: completed.promise,
@@ -151,7 +153,10 @@ describe("SecureUploadStorage terminal state", () => {
       unlinkCalls += 1;
       await unlink(path);
     });
-    const call = createStorageCall(directory, cleaner);
+    const reports: unknown[] = [];
+    const call = createStorageCall(directory, cleaner, undefined, (report) => {
+      reports.push(report);
+    });
     const delayed = await opened;
 
     call.request.emit("aborted");
@@ -172,6 +177,7 @@ describe("SecureUploadStorage terminal state", () => {
     expect(descriptorClosed).toBe(true);
     expect(outcome.error).toBeInstanceOf(UploadStorageError);
     expect(call.callbackCalls()).toBe(1);
+    expect(reports).toEqual([]);
     expect(await readdir(directory)).toEqual([]);
   });
 
@@ -321,7 +327,10 @@ describe("SecureUploadStorage terminal state", () => {
       attempts += 1;
       throw new Error("private cleanup failure");
     });
-    const call = createStorageCall(directory, cleaner);
+    const reports: unknown[] = [];
+    const call = createStorageCall(directory, cleaner, undefined, (report) => {
+      reports.push(report);
+    });
     const delayed = await opened;
 
     call.request.emit("aborted");
@@ -343,14 +352,69 @@ describe("SecureUploadStorage terminal state", () => {
     expect(descriptorClosed).toBe(true);
     expect(outcome.error).toBeInstanceOf(UploadCleanupError);
     expect(call.callbackCalls()).toBe(1);
+    expect(reports).toEqual([
+      {
+        code: "UPLOAD_CLEANUP_FAILED",
+        phase: "terminal_cleanup",
+      },
+    ]);
     expect(await readdir(directory)).toHaveLength(1);
   });
+
+  it.each(["throw", "reject"] as const)(
+    "contains a reporter that %ss without disrupting cleanup settlement",
+    async (behavior) => {
+      const root = await mkdtemp(join(tmpdir(), "connectia-storage-unit-"));
+      roots.push(root);
+      const directory = secureUploadDirectory(join(root, "uploads"));
+      const opened = installDelayedOpen();
+      const cleaner = new RetryingUploadCleaner(async () => {
+        throw new Error("private cleanup failure");
+      });
+      let reporterCalls = 0;
+      const call = createStorageCall(
+        directory,
+        cleaner,
+        undefined,
+        (report) => {
+          reporterCalls += 1;
+          expect(report).toEqual({
+            code: "UPLOAD_CLEANUP_FAILED",
+            phase: "terminal_cleanup",
+          });
+          if (behavior === "throw") {
+            throw new Error("private reporter failure");
+          }
+          return Promise.reject(new Error("private reporter rejection"));
+        },
+      );
+      const delayed = await opened;
+
+      call.request.emit("aborted");
+      delayed.release();
+      const outcome = await call.completed;
+      await Promise.resolve();
+
+      expect(outcome.error).toBeInstanceOf(UploadCleanupError);
+      expect(call.callbackCalls()).toBe(1);
+      expect(reporterCalls).toBe(1);
+      expect(await readdir(directory)).toHaveLength(1);
+    },
+  );
 
   it("streams a successful upload once and retains its file", async () => {
     const root = await mkdtemp(join(tmpdir(), "connectia-storage-unit-"));
     roots.push(root);
     const directory = secureUploadDirectory(join(root, "uploads"));
-    const call = createStorageCall(directory);
+    const reports: unknown[] = [];
+    const call = createStorageCall(
+      directory,
+      new RetryingUploadCleaner(),
+      undefined,
+      (report) => {
+        reports.push(report);
+      },
+    );
 
     call.stream.end("%PDF-success");
     const outcome = await call.completed;
@@ -361,5 +425,6 @@ describe("SecureUploadStorage terminal state", () => {
     expect(await readFile(outcome.info?.path ?? "", "utf8")).toBe(
       "%PDF-success",
     );
+    expect(reports).toEqual([]);
   });
 });
