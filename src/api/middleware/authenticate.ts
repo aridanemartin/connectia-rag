@@ -9,11 +9,6 @@ export function authenticate(config: AppConfig): RequestHandler {
   const expectedToken = Buffer.from(config.AUTH_TOKEN, "utf8");
 
   return (request, _response, next) => {
-    if (config.AUTH_DISABLED) {
-      next();
-      return;
-    }
-
     const authorization = request.get("Authorization");
     const suppliedToken = authorization?.match(BEARER_PATTERN)?.[1];
     const suppliedBuffer = Buffer.from(suppliedToken ?? "", "utf8");

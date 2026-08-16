@@ -1,13 +1,12 @@
 import express, { type Express, type Request, type Response } from "express";
 import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
-import swaggerUi from "swagger-ui-express";
 import { type AppConfig, loadConfig } from "../config/env.js";
 import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestId } from "./middleware/request-id.js";
-import { createOpenApiDocument } from "./openapi.js";
+import { createOpenApiDocument, createSwaggerUiHtml } from "./openapi.js";
 import { createHealthRouter } from "./routes/health.js";
 
 export interface AppDependencies {
@@ -20,6 +19,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const app = express();
   const openApiDocument = createOpenApiDocument();
+  const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
 
   app.use(requestId);
   app.use(
@@ -30,7 +30,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
         req: (request) => ({
           id: request.id,
           method: request.method,
-          url: request.url,
+          url: request.url.split("?", 1)[0],
         }),
       },
     }),
@@ -40,7 +40,9 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);
   });
-  app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  app.get(["/docs", "/docs/"], (_request, response) => {
+    response.status(200).type("html").send(swaggerUiHtml);
+  });
   app.use((_request, _response, next) => {
     next(new AppError(404, "NOT_FOUND", "Recurso no encontrado."));
   });

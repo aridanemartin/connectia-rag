@@ -29,6 +29,20 @@ describe("HTTP boundary", () => {
     );
   });
 
+  it("requires bearer authentication even when AUTH_DISABLED is true", async () => {
+    const authDisabledConfig = loadConfig({
+      AUTH_TOKEN,
+      AUTH_DISABLED: "true",
+    });
+
+    const response = await request(
+      createApp({ config: authDisabledConfig, logger: silentLogger }),
+    ).get("/openapi.json");
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("accepts the configured bearer token and rejects a wrong token", async () => {
     const wrongResponse = await request(buildApp())
       .get("/openapi.json")
@@ -74,6 +88,23 @@ describe("HTTP boundary", () => {
     expect(response.type).toBe("text/html");
   });
 
+  it("serves Swagger UI without browser subresource requests", async () => {
+    const response = await request(buildApp())
+      .get("/docs/")
+      .set("Authorization", `Bearer ${AUTH_TOKEN}`);
+    const subresourceUrls = Array.from(
+      response.text.matchAll(
+        /<(?:script|link)\s+[^>]*(?:src|href)=["']([^"']+)["'][^>]*>/gi,
+      ),
+      (match) => match[1],
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("SwaggerUIBundle({");
+    expect(response.text).toContain("Connectia RAG API");
+    expect(subresourceUrls).toEqual([]);
+  });
+
   it("echoes a valid request ID", async () => {
     const requestId = randomUUID();
 
@@ -115,6 +146,24 @@ describe("HTTP boundary", () => {
     const logs = chunks.join("");
     expect(logs).not.toContain(AUTH_TOKEN);
     expect(logs.toLowerCase()).not.toContain("authorization");
+  });
+
+  it("does not write query-string secrets to request logs", async () => {
+    const querySecret = "query-secret-that-must-not-be-logged";
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(chunk.toString());
+        callback();
+      },
+    });
+    const logger = pino(stream);
+
+    await request(createApp({ config, logger }))
+      .get(`/openapi.json?token=${querySecret}`)
+      .set("Authorization", `Bearer ${AUTH_TOKEN}`);
+
+    expect(chunks.join("")).not.toContain(querySecret);
   });
 
   it("returns safe AppError details through the HTTP envelope", async () => {
