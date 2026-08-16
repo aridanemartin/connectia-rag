@@ -332,6 +332,19 @@ export class IndexingJobRepository {
     return row ? toIndexingJob(row) : undefined;
   }
 
+  liveTempFilePaths(): string[] {
+    return this.database
+      .prepare<[], { temp_file_path: string }>(
+        `
+          SELECT temp_file_path FROM indexing_jobs
+          WHERE status IN ('queued', 'processing')
+          ORDER BY temp_file_path
+        `,
+      )
+      .all()
+      .map((row) => row.temp_file_path);
+  }
+
   private require(jobId: string): IndexingJob {
     const job = this.find(jobId);
     if (!job) {

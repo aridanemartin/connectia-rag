@@ -1,14 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmod,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import pino from "pino";
 import request from "supertest";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,6 +22,7 @@ import { loadConfig } from "../../src/config/env.js";
 import {
   createIndexingComposition,
   type IndexingComposition,
+  type IndexingRequest,
 } from "../../src/documents/indexing.service.js";
 import { closeDatabase, openDatabase } from "../../src/persistence/database.js";
 import { createTestPdf } from "../support/create-test-pdf.js";
@@ -25,10 +31,14 @@ const AUTH_TOKEN = "test-auth-token-with-at-least-32-characters";
 const temporaryDirectories: string[] = [];
 const compositions: IndexingComposition[] = [];
 
-async function createTestContext(overrides: NodeJS.ProcessEnv = {}) {
+async function createTestContext(
+  overrides: NodeJS.ProcessEnv = {},
+  prepare?: (root: string, uploadDirectory: string) => Promise<void>,
+) {
   const root = await mkdtemp(join(tmpdir(), "connectia-indexing-test-"));
   temporaryDirectories.push(root);
   const uploadDirectory = join(root, "uploads");
+  await prepare?.(root, uploadDirectory);
   const config = loadConfig({
     AUTH_TOKEN,
     DATABASE_PATH: join(root, "connectia.sqlite"),
@@ -44,9 +54,42 @@ async function createTestContext(overrides: NodeJS.ProcessEnv = {}) {
       indexingService: composition.indexingService,
     }),
     composition,
+    config,
     root,
     uploadDirectory,
   };
+}
+
+type UploadUnlink = (path: string) => Promise<void>;
+
+function appWithUploadUnlink(
+  context: Awaited<ReturnType<typeof createTestContext>>,
+  uploadUnlink: UploadUnlink,
+) {
+  return createApp({
+    config: context.config,
+    logger: pino({ level: "silent" }),
+    indexingService: context.composition.indexingService,
+    uploadUnlink,
+  });
+}
+
+function rawMultipartBody(
+  boundary: string,
+  parts: readonly {
+    headers: readonly string[];
+    body: string;
+  }[],
+): Buffer {
+  return Buffer.from(
+    `${parts
+      .map(
+        (part) =>
+          `--${boundary}\r\n${part.headers.join("\r\n")}\r\n\r\n${part.body}\r\n`,
+      )
+      .join("")}--${boundary}--\r\n`,
+    "utf8",
+  );
 }
 
 async function uploadEntries(directory: string): Promise<string[]> {
@@ -74,6 +117,85 @@ interface SendPdfOptions {
   description?: string | null;
   filename?: string;
   contentType?: string;
+}
+
+type ConcurrencyResult =
+  | { type: "result"; status: 202; jobId: string }
+  | { type: "result"; status: number; code: string };
+
+async function runConcurrentIndexingWorkers(
+  workersData: readonly {
+    config: ReturnType<typeof loadConfig>;
+    input: IndexingRequest;
+  }[],
+): Promise<ConcurrencyResult[]> {
+  const workers = workersData.map(
+    (workerData) =>
+      new Worker(
+        new URL("../support/indexing-concurrency-worker.ts", import.meta.url),
+        {
+          execArgv: ["--import", "tsx"],
+          workerData,
+        },
+      ),
+  );
+  return await new Promise<ConcurrencyResult[]>((resolveWorkers, reject) => {
+    const results: ConcurrencyResult[] = [];
+    let ready = 0;
+    let exited = 0;
+    let settled = false;
+    const finish = () => {
+      if (
+        !settled &&
+        exited === workers.length &&
+        results.length === workers.length
+      ) {
+        settled = true;
+        clearTimeout(timeout);
+        resolveWorkers(results);
+      }
+    };
+    const fail = (error: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      void Promise.all(workers.map((worker) => worker.terminate()));
+      reject(error);
+    };
+    const timeout = setTimeout(
+      () => fail(new Error("Indexing worker barrier timed out")),
+      10_000,
+    );
+
+    for (const worker of workers) {
+      worker.on("message", (message: { type?: string } | ConcurrencyResult) => {
+        if (message.type === "ready") {
+          ready += 1;
+          if (ready === workers.length) {
+            for (const readyWorker of workers) {
+              readyWorker.postMessage("go");
+            }
+          }
+          return;
+        }
+        if (message.type === "result") {
+          results.push(message as ConcurrencyResult);
+          finish();
+        }
+      });
+      worker.once("error", fail);
+      worker.once("exit", (code) => {
+        if (code !== 0) {
+          fail(new Error(`Indexing worker exited with code ${code}`));
+          return;
+        }
+        exited += 1;
+        finish();
+      });
+    }
+  });
 }
 
 function sendPdf(
@@ -176,7 +298,9 @@ describe("POST /api/v1/indexing/jobs", () => {
     expect(persisted).toEqual({
       jobId: response.body.jobId,
       status: "queued",
-      tempFilePath: join(context.uploadDirectory, uploadEntries[0] ?? ""),
+      tempFilePath: await realpath(
+        join(context.uploadDirectory, uploadEntries[0] ?? ""),
+      ),
       contentHash: expectedContentHash,
       requestHash: expectedRequestHash,
       state: "INDEXING",
@@ -186,6 +310,132 @@ describe("POST /api/v1/indexing/jobs", () => {
     expect(uploadEntries).toHaveLength(1);
     expect(uploadEntries[0]).not.toContain("matricula");
     expect((await stat(context.uploadDirectory)).mode & 0o077).toBe(0);
+  });
+
+  it("hardens a pre-existing permissive temporary directory and creates uploads as 0600", async () => {
+    const context = await createTestContext(
+      {},
+      async (_root, uploadDirectory) => {
+        await mkdir(uploadDirectory, { mode: 0o755 });
+        await chmod(uploadDirectory, 0o755);
+      },
+    );
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido privado institucional."],
+    ]);
+
+    const response = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-private-file-mode",
+    });
+    const [storedFilename] = await uploadEntries(context.uploadDirectory);
+
+    expect(response.status).toBe(202);
+    expect((await stat(context.uploadDirectory)).mode & 0o777).toBe(0o700);
+    expect(
+      (await stat(join(context.uploadDirectory, storedFilename ?? ""))).mode &
+        0o777,
+    ).toBe(0o600);
+  });
+
+  it("rejects a symlinked temporary directory without writing into its target", async () => {
+    const context = await createTestContext(
+      {},
+      async (root, uploadDirectory) => {
+        const target = join(root, "symlink-target");
+        await mkdir(target, { mode: 0o700 });
+        await symlink(target, uploadDirectory, "dir");
+      },
+    );
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido privado institucional."],
+    ]);
+
+    const response = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-symlink-storage",
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("UPLOAD_STORAGE_UNAVAILABLE");
+    expect(JSON.stringify(response.body)).not.toContain(context.root);
+    expect(await uploadEntries(join(context.root, "symlink-target"))).toEqual(
+      [],
+    );
+  });
+
+  it("rejects a non-directory temporary path through a safe storage response", async () => {
+    const root = await mkdtemp(join(tmpdir(), "connectia-indexing-test-"));
+    temporaryDirectories.push(root);
+    const uploadPath = join(root, "uploads");
+    await writeFile(uploadPath, "not a directory");
+    const config = loadConfig({
+      AUTH_TOKEN,
+      DATABASE_PATH: join(root, "connectia.sqlite"),
+      TEMP_DIR: uploadPath,
+    });
+    const composition = createIndexingComposition(config);
+    compositions.push(composition);
+    let app: ReturnType<typeof createApp> | undefined;
+
+    expect(() => {
+      app = createApp({
+        config,
+        logger: pino({ level: "silent" }),
+        indexingService: composition.indexingService,
+      });
+    }).not.toThrow();
+    if (!app) {
+      return;
+    }
+    const pdfPath = await createTestPdf(root, [
+      ["MATRÍCULA", "Contenido privado institucional."],
+    ]);
+    const response = await request(app)
+      .post("/api/v1/indexing/jobs")
+      .set("Authorization", `Bearer ${AUTH_TOKEN}`)
+      .set("Idempotency-Key", "index-nondirectory-storage")
+      .field("documentId", randomUUID())
+      .field("versionId", randomUUID())
+      .field("title", "Matrícula")
+      .field("academicYear", "2026-2027")
+      .attach("file", pdfPath, "matricula.pdf");
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("UPLOAD_STORAGE_UNAVAILABLE");
+    expect(JSON.stringify(response.body)).not.toContain(root);
+  });
+
+  it("safely rejects Busboy's real finite 16 KiB part-header boundary and cleans prior files", async () => {
+    const context = await createTestContext();
+    const boundary = "connectia-header-boundary";
+    const requestBody = rawMultipartBody(boundary, [
+      {
+        headers: [
+          'Content-Disposition: form-data; name="file"; filename="private.pdf"',
+          "Content-Type: application/pdf",
+        ],
+        body: "%PDF-private-content",
+      },
+      {
+        headers: [
+          'Content-Disposition: form-data; name="title"',
+          `X-Oversized-Header: ${"sensitive".repeat(2_100)}`,
+        ],
+        body: "Matrícula",
+      },
+    ]);
+
+    const response = await request(context.app)
+      .post("/api/v1/indexing/jobs")
+      .set("Authorization", `Bearer ${AUTH_TOKEN}`)
+      .set("Idempotency-Key", "index-header-boundary")
+      .set("Content-Type", `multipart/form-data; boundary=${boundary}`)
+      .send(requestBody);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("MULTIPART_INVALID");
+    expect(JSON.stringify(response.body)).not.toContain("sensitive");
+    expect(JSON.stringify(response.body)).not.toContain(context.root);
+    expect(await uploadEntries(context.uploadDirectory)).toEqual([]);
   });
 
   it("requires authentication before creating temporary files", async () => {
@@ -241,6 +491,103 @@ describe("POST /api/v1/indexing/jobs", () => {
     expect(replay.body.status).toBe("queued");
     expect(counts).toEqual({ jobs: 1, versions: 1 });
     expect(await uploadEntries(context.uploadDirectory)).toHaveLength(1);
+  });
+
+  it("canonicalizes UUID casing before replay hashing and persistence", async () => {
+    const context = await createTestContext();
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido de identidad canónica."],
+    ]);
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+    const first = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-uuid-replay",
+      documentId,
+      versionId,
+    });
+
+    const replay = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-uuid-replay",
+      documentId: documentId.toUpperCase(),
+      versionId: versionId.toUpperCase(),
+    });
+
+    expect(first.status).toBe(202);
+    expect(replay.status).toBe(202);
+    expect(replay.body.jobId).toBe(first.body.jobId);
+    expect(
+      context.composition.database
+        .prepare("SELECT id, document_id AS documentId FROM document_versions")
+        .all(),
+    ).toEqual([{ id: versionId, documentId }]);
+  });
+
+  it("does not create case-distinct UUID identities under a different key", async () => {
+    const context = await createTestContext();
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido de identidad estable."],
+    ]);
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+
+    const first = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-uuid-first",
+      documentId,
+      versionId,
+    });
+    const second = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-uuid-second",
+      documentId: documentId.toUpperCase(),
+      versionId: versionId.toUpperCase(),
+    });
+
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(
+      context.composition.database
+        .prepare(
+          "SELECT (SELECT COUNT(*) FROM documents) AS documents, (SELECT COUNT(*) FROM document_versions) AS versions, (SELECT COUNT(*) FROM indexing_jobs) AS jobs",
+        )
+        .get(),
+    ).toEqual({ documents: 1, versions: 1, jobs: 2 });
+  });
+
+  it("normalizes canonically equivalent Spanish metadata to NFC before hashing and persistence", async () => {
+    const context = await createTestContext();
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido Unicode institucional."],
+    ]);
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+    const decomposedTitle = "Matri\u0301cula 2026-2027";
+    const decomposedDescription = "Informacio\u0301n acade\u0301mica";
+
+    const first = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-unicode",
+      documentId,
+      versionId,
+      title: `  ${decomposedTitle}  `,
+      description: `  ${decomposedDescription}  `,
+    });
+    const replay = await sendPdf(context, pdfPath, {
+      idempotencyKey: "index-canonical-unicode",
+      documentId,
+      versionId,
+      title: "Matrícula 2026-2027",
+      description: "Información académica",
+    });
+
+    expect(first.status).toBe(202);
+    expect(replay.status).toBe(202);
+    expect(replay.body.jobId).toBe(first.body.jobId);
+    expect(
+      context.composition.database
+        .prepare("SELECT title, description FROM documents")
+        .get(),
+    ).toEqual({
+      title: "Matrícula 2026-2027",
+      description: "Información académica",
+    });
   });
 
   it.each([
@@ -633,49 +980,224 @@ describe("POST /api/v1/indexing/jobs", () => {
     expect(await uploadEntries(context.uploadDirectory)).toEqual([]);
   });
 
-  it("serializes concurrent same-key requests to one durable job", async () => {
+  it("retries cleanup transiently and preserves the validation response after cleanup succeeds", async () => {
     const context = await createTestContext();
-    const secondComposition = createIndexingComposition(
-      loadConfig({
-        AUTH_TOKEN,
-        DATABASE_PATH: join(context.root, "connectia.sqlite"),
-        TEMP_DIR: context.uploadDirectory,
-      }),
-    );
-    compositions.push(secondComposition);
-    const secondApp = createApp({
-      config: loadConfig({
-        AUTH_TOKEN,
-        DATABASE_PATH: join(context.root, "connectia.sqlite"),
-        TEMP_DIR: context.uploadDirectory,
-      }),
-      logger: pino({ level: "silent" }),
-      indexingService: secondComposition.indexingService,
+    const pdfPath = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido para limpieza transitoria."],
+    ]);
+    let attempts = 0;
+    const cleanupApp = appWithUploadUnlink(context, async (path) => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw new Error("transient private cleanup failure");
+      }
+      await rm(path);
     });
+
+    const response = await sendPdf({ ...context, app: cleanupApp }, pdfPath, {
+      idempotencyKey: "index-cleanup-retry",
+      title: "   ",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("INDEXING_METADATA_INVALID");
+    expect(attempts).toBe(3);
+    expect(await uploadEntries(context.uploadDirectory)).toEqual([]);
+  });
+
+  it.each([
+    { branch: "validation", expectedPrimary: 400 },
+    { branch: "replay", expectedPrimary: 202 },
+    { branch: "conflict", expectedPrimary: 409 },
+    { branch: "persistence", expectedPrimary: 500 },
+  ])(
+    "returns a safe observable 5xx when $branch cleanup exhausts retries",
+    async ({ branch, expectedPrimary }) => {
+      const context = await createTestContext();
+      const firstPdf = await createTestPdf(context.root, [
+        ["MATRÍCULA", "Primer contenido para fallo de limpieza."],
+      ]);
+      const secondPdf = await createTestPdf(context.root, [
+        ["MATRÍCULA", "Segundo contenido para fallo de limpieza."],
+      ]);
+      const documentId = randomUUID();
+      const versionId = randomUUID();
+      const idempotencyKey = `index-cleanup-failure-${branch}`;
+      if (branch === "replay" || branch === "conflict") {
+        const accepted = await sendPdf(context, firstPdf, {
+          idempotencyKey,
+          documentId,
+          versionId,
+        });
+        expect(accepted.status).toBe(202);
+      }
+      if (branch === "persistence") {
+        context.composition.database.exec(`
+          CREATE TRIGGER reject_cleanup_test_job
+          BEFORE INSERT ON indexing_jobs
+          BEGIN
+            SELECT RAISE(ABORT, 'private persistence error');
+          END;
+        `);
+      }
+      let attempts = 0;
+      const cleanupApp = appWithUploadUnlink(context, async () => {
+        attempts += 1;
+        throw new Error("private cleanup path and details");
+      });
+      const requestPdf = branch === "conflict" ? secondPdf : firstPdf;
+      const response = await sendPdf(
+        { ...context, app: cleanupApp },
+        requestPdf,
+        {
+          idempotencyKey,
+          documentId,
+          versionId,
+          ...(branch === "validation" ? { title: "   " } : {}),
+        },
+      );
+
+      expect(expectedPrimary).not.toBe(503);
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("UPLOAD_CLEANUP_FAILED");
+      expect(attempts).toBe(3);
+      expect(JSON.stringify(response.body)).not.toContain("private");
+      expect(JSON.stringify(response.body)).not.toContain(context.root);
+      expect(await uploadEntries(context.uploadDirectory)).toHaveLength(
+        branch === "replay" || branch === "conflict" ? 2 : 1,
+      );
+    },
+  );
+
+  it("promotes Multer automatic cleanup failure to a safe storage 5xx", async () => {
+    const context = await createTestContext({ MAX_PDF_BYTES: "512" });
+    const oversized = join(context.root, "oversized-cleanup.pdf");
+    await writeFile(
+      oversized,
+      Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(508)]),
+    );
+    let attempts = 0;
+    const cleanupApp = appWithUploadUnlink(context, async () => {
+      attempts += 1;
+      throw new Error("private Multer cleanup failure");
+    });
+
+    const response = await sendPdf({ ...context, app: cleanupApp }, oversized, {
+      idempotencyKey: "index-multer-cleanup-failure",
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("UPLOAD_CLEANUP_FAILED");
+    expect(attempts).toBe(3);
+    expect(JSON.stringify(response.body)).not.toContain("private");
+    expect(await uploadEntries(context.uploadDirectory)).toHaveLength(1);
+  });
+
+  it("sweeps only unreferenced server-owned upload files and preserves live/unrelated entries", async () => {
+    const context = await createTestContext();
+    const acceptedPdf = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Contenido referenciado por un trabajo vivo."],
+    ]);
+    const accepted = await sendPdf(context, acceptedPdf, {
+      idempotencyKey: "index-live-upload",
+    });
+    expect(accepted.status).toBe(202);
+    const orphan = join(
+      context.uploadDirectory,
+      `connectia-upload-${randomUUID()}.pdf`,
+    );
+    const unrelated = join(context.uploadDirectory, "operator-note.txt");
+    await writeFile(orphan, "%PDF-orphan");
+    await writeFile(unrelated, "preserve this file");
+
+    expect(context.composition.sweepOrphans).toBeTypeOf("function");
+    if (typeof context.composition.sweepOrphans !== "function") {
+      return;
+    }
+    const removed = await context.composition.sweepOrphans();
+    const entries = await uploadEntries(context.uploadDirectory);
+
+    expect(removed).toBe(1);
+    expect(entries).toContain("operator-note.txt");
+    expect(entries).not.toContain(orphan.split("/").at(-1));
+    expect(
+      entries.filter((entry) => entry.startsWith("connectia-upload-")),
+    ).toHaveLength(1);
+  });
+
+  it("serializes identical same-key requests across two worker connections", async () => {
+    const context = await createTestContext();
     const pdfPath = await createTestPdf(context.root, [
       ["MATRÍCULA", "Contenido concurrente institucional."],
     ]);
     const documentId = randomUUID();
     const versionId = randomUUID();
-    const options = {
+    const input: IndexingRequest = {
       idempotencyKey: "index-concurrent-request",
       documentId,
       versionId,
+      title: "Matrícula 2026-2027",
+      academicYear: "2026-2027",
+      description: null,
+      tempFilePath: pdfPath,
     };
 
-    const [first, second] = await Promise.all([
-      sendPdf(context, pdfPath, options),
-      sendPdf({ ...context, app: secondApp }, pdfPath, options),
+    const results = await runConcurrentIndexingWorkers([
+      { config: context.config, input },
+      { config: context.config, input },
     ]);
+    const jobIds = results.flatMap((result) =>
+      "jobId" in result ? [result.jobId] : [],
+    );
 
-    expect(first.status).toBe(202);
-    expect(second.status).toBe(202);
-    expect(second.body.jobId).toBe(first.body.jobId);
+    expect(results.map((result) => result.status)).toEqual([202, 202]);
+    expect(jobIds).toHaveLength(2);
+    expect(new Set(jobIds).size).toBe(1);
     expect(
       context.composition.database
         .prepare("SELECT COUNT(*) AS count FROM indexing_jobs")
         .get(),
     ).toEqual({ count: 1 });
-    expect(await uploadEntries(context.uploadDirectory)).toHaveLength(1);
+  });
+
+  it("returns one conflict for different same-key bytes across two worker connections", async () => {
+    const context = await createTestContext();
+    const firstPdf = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Primer contenido concurrente."],
+    ]);
+    const secondPdf = await createTestPdf(context.root, [
+      ["MATRÍCULA", "Segundo contenido concurrente."],
+    ]);
+    const common = {
+      idempotencyKey: "index-concurrent-conflict",
+      documentId: randomUUID(),
+      versionId: randomUUID(),
+      title: "Matrícula 2026-2027",
+      academicYear: "2026-2027",
+      description: null,
+    };
+
+    const results = await runConcurrentIndexingWorkers([
+      {
+        config: context.config,
+        input: { ...common, tempFilePath: firstPdf },
+      },
+      {
+        config: context.config,
+        input: { ...common, tempFilePath: secondPdf },
+      },
+    ]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([202, 409]);
+    expect(results).toContainEqual({
+      type: "result",
+      status: 409,
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    expect(
+      context.composition.database
+        .prepare("SELECT COUNT(*) AS count FROM indexing_jobs")
+        .get(),
+    ).toEqual({ count: 1 });
   });
 });

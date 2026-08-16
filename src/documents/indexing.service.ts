@@ -19,6 +19,11 @@ import {
   type IndexingDocumentInput,
   PersistenceConflictError,
 } from "./document.types.js";
+import {
+  RetryingUploadCleaner,
+  sweepOrphanUploads,
+  type UploadUnlink,
+} from "./upload-storage.js";
 
 export interface IndexingRequest {
   idempotencyKey: string;
@@ -152,12 +157,14 @@ export class IndexingService implements IndexingEnqueuer {
 export interface IndexingComposition {
   indexingService: IndexingService;
   database: DatabaseConnection;
+  sweepOrphans(): Promise<number>;
   close(): void;
 }
 
 export function createIndexingComposition(
   config: AppConfig,
   clock: Clock = systemClock,
+  uploadUnlink?: UploadUnlink,
 ): IndexingComposition {
   if (config.DATABASE_PATH !== ":memory:") {
     mkdirSync(dirname(resolve(config.DATABASE_PATH)), {
@@ -168,14 +175,22 @@ export function createIndexingComposition(
   const database = openDatabase(config.DATABASE_PATH);
   try {
     migrate(database);
+    const jobs = new IndexingJobRepository(database, clock);
     const indexingService = new IndexingService(
       database,
       new DocumentRepository(database, clock),
-      new IndexingJobRepository(database, clock),
+      jobs,
     );
+    const cleaner = new RetryingUploadCleaner(uploadUnlink);
     return {
       indexingService,
       database,
+      sweepOrphans: () =>
+        sweepOrphanUploads(
+          config.TEMP_DIR,
+          new Set(jobs.liveTempFilePaths()),
+          cleaner,
+        ),
       close: () => closeDatabase(database),
     };
   } catch (error) {

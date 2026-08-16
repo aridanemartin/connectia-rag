@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { unlink } from "node:fs/promises";
 import { extname } from "node:path";
 import type { Request, RequestHandler } from "express";
 import { Router } from "express";
@@ -11,39 +8,48 @@ import type {
   IndexingEnqueuer,
   IndexingRequest,
 } from "../../documents/indexing.service.js";
+import {
+  RetryingUploadCleaner,
+  SecureUploadStorage,
+  UploadCleanupError,
+  UploadStorageError,
+  type UploadUnlink,
+} from "../../documents/upload-storage.js";
 import { AppError } from "../errors.js";
+
+const safeCanonicalText = (minimum: number, maximum: number) =>
+  z
+    .string()
+    .transform((value) => value.trim().normalize("NFC"))
+    .pipe(
+      z
+        .string()
+        .min(minimum)
+        .max(maximum)
+        .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value)),
+    );
 
 const metadataSchema = z
   .object({
-    documentId: z.uuid(),
-    versionId: z.uuid(),
-    title: z
-      .string()
-      .trim()
-      .min(1)
-      .max(200)
-      .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value)),
+    documentId: z.uuid().transform((value) => value.toLowerCase()),
+    versionId: z.uuid().transform((value) => value.toLowerCase()),
+    title: safeCanonicalText(1, 200),
     academicYear: z
       .string()
       .trim()
       .regex(/^\d{4}-\d{4}$/u),
-    description: z
-      .string()
-      .trim()
-      .max(1_000)
-      .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value))
-      .optional(),
+    description: safeCanonicalText(0, 1_000).optional(),
   })
   .strict();
 
-function uploadMiddleware(config: AppConfig): RequestHandler {
-  mkdirSync(config.TEMP_DIR, { recursive: true, mode: 0o700 });
-  const storage = multer.diskStorage({
-    destination: config.TEMP_DIR,
-    filename: (_request, _file, callback) => {
-      callback(null, randomUUID());
-    },
-  });
+function uploadMiddleware(
+  config: AppConfig,
+  cleaner: RetryingUploadCleaner,
+): RequestHandler {
+  const storage = new SecureUploadStorage(config.TEMP_DIR, cleaner);
+  // The lockfile pins Multer 2.2.0 to Busboy 1.6.0. Busboy itself enforces a
+  // finite 16 KiB/2,000-pair part-header boundary; it has no configurable
+  // headerPairs option. The raw-wire integration test guards that real limit.
   return multer({
     storage,
     preservePath: false,
@@ -56,7 +62,6 @@ function uploadMiddleware(config: AppConfig): RequestHandler {
       parts: 7,
       fieldNameSize: 64,
       fieldSize: 8 * 1024,
-      headerPairs: 16,
       fieldNestingDepth: 0,
     },
   }).single("file");
@@ -80,14 +85,6 @@ function idempotencyKey(request: Request): string {
     );
   }
   return value;
-}
-
-async function removeUpload(path: string): Promise<void> {
-  try {
-    await unlink(path);
-  } catch {
-    // Cleanup is best-effort and must never replace the primary safe outcome.
-  }
 }
 
 function indexingInput(request: Request): IndexingRequest {
@@ -137,6 +134,27 @@ function indexingInput(request: Request): IndexingRequest {
 }
 
 function mapUploadError(error: unknown): AppError {
+  if (
+    error instanceof UploadCleanupError ||
+    (typeof error === "object" &&
+      error !== null &&
+      "storageErrors" in error &&
+      Array.isArray(error.storageErrors) &&
+      error.storageErrors.length > 0)
+  ) {
+    return new AppError(
+      503,
+      "UPLOAD_CLEANUP_FAILED",
+      "No se ha podido limpiar el archivo temporal.",
+    );
+  }
+  if (error instanceof UploadStorageError) {
+    return new AppError(
+      503,
+      "UPLOAD_STORAGE_UNAVAILABLE",
+      "El almacenamiento temporal no está disponible.",
+    );
+  }
   if (!(error instanceof multer.MulterError)) {
     return new AppError(
       400,
@@ -197,9 +215,11 @@ function mapUploadError(error: unknown): AppError {
 export function createIndexingRouter(
   config: AppConfig,
   indexingService: IndexingEnqueuer,
+  uploadUnlink?: UploadUnlink,
 ): Router {
   const router = Router();
-  const upload = uploadMiddleware(config);
+  const cleaner = new RetryingUploadCleaner(uploadUnlink);
+  const upload = uploadMiddleware(config, cleaner);
 
   router.post("/", (request, response, next) => {
     upload(request, response, (uploadError) => {
@@ -210,20 +230,44 @@ export function createIndexingRouter(
 
       void (async () => {
         let retainUpload = false;
+        let primaryError: unknown;
+        let responseBody:
+          | { jobId: string; status: "queued"; requestId: string }
+          | undefined;
         try {
           const input = indexingInput(request);
           const job = await indexingService.enqueue(input);
           retainUpload = job.tempFilePath === input.tempFilePath;
-          response.status(202).json({
+          responseBody = {
             jobId: job.id,
             status: "queued",
             requestId: request.requestId,
-          });
-        } finally {
-          if (request.file && !retainUpload) {
-            await removeUpload(request.file.path);
+          };
+        } catch (error) {
+          primaryError = error;
+        }
+        if (request.file && !retainUpload) {
+          try {
+            await cleaner.remove(request.file.path);
+          } catch {
+            throw new AppError(
+              503,
+              "UPLOAD_CLEANUP_FAILED",
+              "No se ha podido limpiar el archivo temporal.",
+            );
           }
         }
+        if (primaryError !== undefined) {
+          throw primaryError;
+        }
+        if (!responseBody) {
+          throw new AppError(
+            500,
+            "INTERNAL_ERROR",
+            "Ha ocurrido un error interno.",
+          );
+        }
+        response.status(202).json(responseBody);
       })().catch(next);
     });
   });

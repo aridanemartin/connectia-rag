@@ -2,11 +2,8 @@ import express, { type Express, type Request, type Response } from "express";
 import pino, { type Logger } from "pino";
 import { pinoHttp } from "pino-http";
 import { type AppConfig, loadConfig } from "../config/env.js";
-import {
-  createIndexingComposition,
-  type IndexingComposition,
-  type IndexingEnqueuer,
-} from "../documents/indexing.service.js";
+import type { IndexingEnqueuer } from "../documents/indexing.service.js";
+import type { UploadUnlink } from "../documents/upload-storage.js";
 import {
   createDefaultReadiness,
   type Readiness,
@@ -24,14 +21,17 @@ export interface AppDependencies {
   logger: Logger;
   readiness: Readiness;
   indexingService: IndexingEnqueuer;
+  uploadUnlink: UploadUnlink;
 }
 
-function lazyIndexingService(config: AppConfig): IndexingEnqueuer {
-  let composition: IndexingComposition | undefined;
+function unavailableIndexingService(): IndexingEnqueuer {
   return {
-    enqueue: (input) => {
-      composition ??= createIndexingComposition(config);
-      return composition.indexingService.enqueue(input);
+    enqueue: async () => {
+      throw new AppError(
+        503,
+        "INDEXING_UNAVAILABLE",
+        "El servicio de indexación no está disponible.",
+      );
     },
   };
 }
@@ -40,7 +40,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   const config = deps.config ?? loadConfig(process.env);
   const logger = deps.logger ?? pino({ level: config.LOG_LEVEL });
   const readiness = deps.readiness ?? createDefaultReadiness(config);
-  const indexingService = deps.indexingService ?? lazyIndexingService(config);
+  const indexingService = deps.indexingService ?? unavailableIndexingService();
   const app = express();
   const openApiDocument = createOpenApiDocument();
   const swaggerUiHtml = createSwaggerUiHtml(openApiDocument);
@@ -63,7 +63,7 @@ export function createApp(deps: Partial<AppDependencies> = {}): Express {
   app.use(authenticate(config));
   app.use(
     "/api/v1/indexing/jobs",
-    createIndexingRouter(config, indexingService),
+    createIndexingRouter(config, indexingService, deps.uploadUnlink),
   );
   app.get("/openapi.json", (_request, response) => {
     response.status(200).json(openApiDocument);

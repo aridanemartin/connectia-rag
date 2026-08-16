@@ -1,26 +1,34 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const serverMocks = vi.hoisted(() => ({
+  createApp: vi.fn(() => ({
+    listen: vi.fn(),
+  })),
+  createIndexingComposition: vi.fn(),
+}));
+
 vi.mock("../../src/api/app.js", () => ({
-  createApp: () => ({
-    listen: (_port: number, onListening: () => void) => onListening(),
-  }),
+  createApp: serverMocks.createApp,
+}));
+
+vi.mock("../../src/documents/indexing.service.js", () => ({
+  createIndexingComposition: serverMocks.createIndexingComposition,
 }));
 
 describe("server startup", () => {
   afterEach(() => {
     vi.resetModules();
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.unstubAllEnvs();
   });
 
-  it("informa en español el puerto de escucha", async () => {
+  it("no crea recursos ni escucha como efecto secundario al importarse", async () => {
     vi.stubEnv("AUTH_TOKEN", "test-auth-token-with-at-least-32-characters");
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await import("../../src/server.js");
+    const serverModule = await import("../../src/server.js");
 
-    expect(log).toHaveBeenCalledWith(
-      "La API RAG de Connectia escucha en el puerto 3000",
-    );
+    expect(serverModule.startServer).toBeTypeOf("function");
+    expect(serverMocks.createIndexingComposition).not.toHaveBeenCalled();
+    expect(serverMocks.createApp).not.toHaveBeenCalled();
   });
 });
