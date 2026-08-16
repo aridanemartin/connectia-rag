@@ -19,6 +19,14 @@
 		max_size 25MB
 	}
 
+	# Block internal metrics from external access
+	@internal {
+		path /internal/*
+	}
+	respond @internal 403 {
+		body "Acceso denegado a rutas internas."
+	}
+
 	reverse_proxy api:3000 {
 		header_up X-Request-Id {http.request.header.X-Request-Id}
 	}
