@@ -22,6 +22,18 @@ const INTERRUPTING_NOISE = [
   { name: "Cc", value: "\u0007" },
   { name: "Cf", value: "\u200B" },
 ] as const;
+const WHITESPACE_SEPARATING_NOISE = [
+  { name: "BOM U+FEFF", value: "\uFEFF" },
+  { name: "Cc lower boundary U+0000", value: "\u0000" },
+  { name: "Cc representative U+0007", value: "\u0007" },
+  { name: "Cc C0 upper boundary U+001F", value: "\u001F" },
+  { name: "Cc C1 lower boundary U+007F", value: "\u007F" },
+  { name: "Cc upper boundary U+009F", value: "\u009F" },
+  { name: "Cf BMP boundary U+00AD", value: "\u00AD" },
+  { name: "Cf representative U+200B", value: "\u200B" },
+  { name: "Cf range boundary U+206F", value: "\u206F" },
+  { name: "Cf supplementary U+E0001", value: "\u{E0001}" },
+] as const;
 const metadata = {
   documentId: DOCUMENT_ID,
   versionId: VERSION_ID,
@@ -53,6 +65,16 @@ afterEach(async () => {
 });
 
 describe("normalizeExtractedText", () => {
+  it.each(WHITESPACE_SEPARATING_NOISE)(
+    "collapses horizontal whitespace exposed by removing $name in one pass",
+    ({ value }) => {
+      const normalized = normalizeExtractedText(`El\t${value}\tplazo`);
+
+      expect(normalized).toBe("El plazo");
+      expect(normalizeExtractedText(normalized)).toBe(normalized);
+    },
+  );
+
   it.each(INTERRUPTING_NOISE)(
     "is final-NFC and idempotent after removing $name noise from decomposed accents",
     ({ value }) => {
@@ -75,6 +97,37 @@ describe("normalizeExtractedText", () => {
     const normalized = normalizeExtractedText(input);
 
     expect(normalized).toBe(expected);
+    expect(normalizeExtractedText(normalized)).toBe(expected);
+  });
+
+  it.each([
+    {
+      name: "a Spanish heading, CRLF, decomposed accents, and mixed noise",
+      input:
+        "  MATRÍCULA\t\u0007\t2026  \r\nInformacio\uFEFF\u0301n\t\u200B\tacadémica.  ",
+      expected: "MATRÍCULA 2026\nInformación académica.",
+    },
+    {
+      name: "NEL, LS, PS, control boundaries, and format noise",
+      input:
+        "DOCUMENTACIÓN\u0085El\t\u007F\tplazo\u2028continu\u2060\u0301a.\u2029Segundo\t\u00AD\tpárrafo.",
+      expected: "DOCUMENTACIÓN\nEl plazo\ncontinúa.\n\nSegundo párrafo.",
+    },
+    {
+      name: "paragraph CRLF, supplementary format noise, and a C1 boundary",
+      input: "BECAS\r\n\r\nRevisio\u{E0001}\u0301n\t\u009F\tfinal.",
+      expected: "BECAS\n\nRevisión final.",
+    },
+    {
+      name: "ordinary canonical Spanish headings and paragraph structure",
+      input: "ADMISIÓN\nEl plazo continúa.\n\nSegundo párrafo.",
+      expected: "ADMISIÓN\nEl plazo continúa.\n\nSegundo párrafo.",
+    },
+  ])("is a fixed point for $name", ({ input, expected }) => {
+    const normalized = normalizeExtractedText(input);
+
+    expect(normalized).toBe(expected);
+    expect(normalized).toBe(normalized.normalize("NFC"));
     expect(normalizeExtractedText(normalized)).toBe(expected);
   });
 });
@@ -476,6 +529,54 @@ describe("TextChunker", () => {
     });
 
     expect(interrupted).toEqual(canonical);
+  });
+
+  it("produces identical payload text and hashes for whitespace/noise-equivalent Spanish input", async () => {
+    const chunker = new TextChunker();
+
+    const canonical = await chunker.split({
+      ...metadata,
+      pages: [{ page: 1, text: "MATRÍCULA\nEl plazo continúa." }],
+    });
+    const noisy = await chunker.split({
+      ...metadata,
+      pages: [
+        {
+          page: 1,
+          text: "MATRÍCULA\nEl\t\u0007\tplazo continu\u200B\u0301a\uFEFF.",
+        },
+      ],
+    });
+
+    expect(canonical.map(({ text }) => text)).toEqual([
+      "MATRÍCULA\nEl plazo continúa.",
+    ]);
+    expect(noisy.map(({ text }) => text)).toEqual(
+      canonical.map(({ text }) => text),
+    );
+    expect(noisy.map(({ contentHash }) => contentHash)).toEqual(
+      canonical.map(({ contentHash }) => contentHash),
+    );
+    expect(noisy).toEqual(canonical);
+  });
+
+  it("hashes exactly the canonical page text used for a single emitted chunk", async () => {
+    const chunks = await new TextChunker().split({
+      ...metadata,
+      pages: [
+        {
+          page: 1,
+          text: "El\t\u0007\tplazo continu\u200B\u0301a\uFEFF.",
+        },
+      ],
+    });
+
+    expect(chunks.map(({ text }) => text)).toEqual(["El plazo continúa."]);
+    expect(new Set(chunks.map(({ contentHash }) => contentHash))).toEqual(
+      new Set([
+        "584d0fa23b4b4e9eceac6d5fb45d428011d1d2918ba212bf4e0f6c805d0fe871",
+      ]),
+    );
   });
 
   it("keeps hashes stable but changes every point ID when the version ID changes", async () => {

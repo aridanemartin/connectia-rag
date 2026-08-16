@@ -57,9 +57,11 @@ export class PdfProcessingError extends Error {
  * Normalize parser text without flattening document structure. Unicode line
  * separators become line breaks, paragraph separators become paragraph breaks,
  * and other Unicode White_Space is collapsed horizontally. U+FEFF is always
- * removed as parser/encoding noise; remaining control and format code points are
- * also discarded after structural line separators have been preserved. NFC is
- * applied last so eligibility, chunking, and hashing share one idempotent form.
+ * removed as parser/encoding noise. After structural separators are preserved,
+ * non-whitespace controls and formats are discarded before horizontal
+ * White_Space is collapsed, so removed noise cannot expose a second whitespace
+ * run. NFC is applied last so eligibility, chunking, and hashing share one
+ * idempotent form.
  */
 export function normalizeExtractedText(value: string): string {
   return value
@@ -74,9 +76,14 @@ export function normalizeExtractedText(value: string): string {
     .join("\n\n")
     .split("\n")
     .map((line) =>
-      line
+      Array.from(line)
+        .filter(
+          (character) =>
+            !CONTROL_OR_FORMAT_CHARACTER.test(character) ||
+            UNICODE_WHITE_SPACE_CHARACTER.test(character),
+        )
+        .join("")
         .replace(/\p{White_Space}+/gu, " ")
-        .replace(/[\p{Cc}\p{Cf}]+/gu, "")
         .trim(),
     )
     .join("\n")
