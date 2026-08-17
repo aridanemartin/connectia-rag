@@ -69,9 +69,10 @@ function makePoint(
   text: string,
   overrides: Partial<VectorPoint["payload"]> = {},
 ): VectorPoint {
+  const seed = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const vector: number[] = [];
   for (let i = 0; i < DIMENSIONS; i++) {
-    vector.push(Math.sin(i * 0.1 + id.charCodeAt(0)) * 0.5);
+    vector.push(Math.sin(i * 0.1 + seed) * 0.5);
   }
   return {
     id,
@@ -248,8 +249,13 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     const farVector: number[] = [];
     for (let i = 0; i < DIMENSIONS; i++) {
       closeVector.push(0.1);
-      farVector.push(-0.1);
+      farVector.push(0.1);
     }
+    // Point the far vector in a slightly different direction (but still the
+    // same side of the origin) so it is returned with a lower score instead of
+    // being filtered out by the 0.0 score threshold (a fully opposite vector
+    // would have cosine -1.0 and never appear in results).
+    farVector[farVector.length - 1] = -0.1;
 
     await store.upsert([
       {
