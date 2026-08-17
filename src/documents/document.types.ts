@@ -33,6 +33,10 @@ export interface DocumentVersion {
   failedAt: string | null;
 }
 
+/**
+ * Thrown when a persistence write conflicts with existing data (e.g. an
+ * idempotency key reused with different content).
+ */
 export class PersistenceConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -40,6 +44,9 @@ export class PersistenceConflictError extends Error {
   }
 }
 
+/**
+ * Thrown when a requested entity is not found in the database.
+ */
 export class PersistenceNotFoundError extends Error {
   constructor(message: string) {
     super(message);
@@ -47,6 +54,10 @@ export class PersistenceNotFoundError extends Error {
   }
 }
 
+/**
+ * Thrown when a document version state transition is not allowed (e.g.
+ * trying to activate a version that is not READY).
+ */
 export class InvalidStateTransitionError extends Error {
   constructor(message: string) {
     super(message);

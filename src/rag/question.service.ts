@@ -84,6 +84,11 @@ function mapGateError(error: unknown): never {
   throw error;
 }
 
+/**
+ * Answers grounded questions: embeds the query, searches the vector store
+ * over allowed versions, has the model decide an answer, validates citations
+ * with one repair attempt, and records diagnostics. Key method: ask(...).
+ */
 export class QuestionService {
   private readonly model: QuestionServiceDependencies["model"];
   private readonly vectorStore: QuestionServiceDependencies["vectorStore"];

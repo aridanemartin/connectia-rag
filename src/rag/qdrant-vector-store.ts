@@ -18,6 +18,10 @@ export type QdrantClientLike = Pick<
   | "delete"
 >;
 
+/**
+ * Thrown when a Qdrant operation fails (invalid payload, dimension mismatch,
+ * or store unavailability). The code identifies the specific failure.
+ */
 export class VectorStoreError extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -93,6 +97,12 @@ function parseChunkPayload(value: unknown): ChunkPayload {
   };
 }
 
+/**
+ * VectorStore backed by Qdrant: ensures the collection matches expected
+ * dimensions, upserts points, searches by version filter, deletes versions,
+ * and reports health. Key methods: ensureCollection, upsert, search,
+ * deleteVersion, health.
+ */
 export class QdrantVectorStore implements VectorStore {
   private readonly client: QdrantClientLike;
 

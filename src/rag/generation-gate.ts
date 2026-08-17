@@ -12,6 +12,11 @@ export interface GenerationGateStats {
   capacity: number;
 }
 
+/**
+ * Concurrency limiter for model generation: bounds active operations and
+ * queue depth, rejects when saturated, and times out operations that wait
+ * too long for a slot. Key methods: run(operation), stats().
+ */
 export class GenerationGate {
   private readonly queue: PQueue;
   private readonly concurrency: number;

@@ -46,6 +46,10 @@ const SAFE_ERROR_MESSAGES: Record<PdfProcessingErrorCode, string> = {
   PDF_TEXT_NOT_FOUND: "El PDF no contiene suficiente texto extraíble.",
 };
 
+/**
+ * Thrown when a PDF cannot be processed (corrupt, encrypted, missing text,
+ * etc.). The code identifies the specific failure category.
+ */
 export class PdfProcessingError extends Error {
   constructor(readonly code: PdfProcessingErrorCode) {
     super(SAFE_ERROR_MESSAGES[code]);
@@ -164,6 +168,11 @@ function countExtractableCodePoints(pages: readonly ExtractedPage[]): number {
   ).length;
 }
 
+/**
+ * Extracts per-page text from a PDF file: verifies the PDF magic header,
+ * delegates parsing to a pluggable loader, validates page metadata, and
+ * normalizes the extracted text. Key method: extract(path).
+ */
 export class PdfExtractor {
   constructor(private readonly loaderFactory = defaultLoaderFactory) {}
 

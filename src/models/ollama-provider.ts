@@ -122,6 +122,11 @@ function readModelTags(value: unknown): Set<string> | undefined {
   return tags;
 }
 
+/**
+ * ModelProvider backed by Ollama: embeds documents and queries, runs chat
+ * decisions with a timeout-bounded fetch, and probes model health. Key
+ * methods: embedDocuments, embedQuery, decide, health.
+ */
 export class OllamaProvider implements ModelProvider {
   private readonly deps: OllamaProviderDependencies;
 

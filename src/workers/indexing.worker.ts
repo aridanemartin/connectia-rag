@@ -154,6 +154,11 @@ function chunkPayload(chunk: Chunk): ChunkPayload {
   };
 }
 
+/**
+ * Background loop that processes leased indexing jobs through extract,
+ * chunk, embed, and store stages, updating progress and safely releasing or
+ * failing jobs on shutdown or errors. Key methods: runOnce(), start(signal).
+ */
 export class IndexingWorker {
   private signal: AbortSignal = new AbortController().signal;
 

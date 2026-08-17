@@ -34,6 +34,11 @@ export interface CleanupWorkerDependencies {
   sleep?: SleepFn;
 }
 
+/**
+ * Background loop that leases queued vector-cleanup jobs, deletes the
+ * corresponding vectors with bounded retries, and completes or requeues the
+ * job. Key methods: runOnce(), start(signal).
+ */
 export class CleanupWorker {
   private signal: AbortSignal = new AbortController().signal;
 

@@ -31,6 +31,9 @@ export type UploadFailureReporter = (
   report: Readonly<UploadFailureReport>,
 ) => void | Promise<void>;
 
+/**
+ * Thrown when the secure upload directory cannot be prepared or verified.
+ */
 export class UploadStorageError extends Error {
   constructor() {
     super("Upload storage is unavailable");
@@ -38,6 +41,10 @@ export class UploadStorageError extends Error {
   }
 }
 
+/**
+ * Thrown when a temporary upload file cannot be cleaned up after failures
+ * or terminal request outcomes.
+ */
 export class UploadCleanupError extends Error {
   constructor() {
     super("Upload cleanup failed");
@@ -73,6 +80,10 @@ export function secureUploadDirectory(path: string): string {
   }
 }
 
+/**
+ * Retries file deletion up to a configurable number of attempts with
+ * exponential back-off. Used to clean up temporary upload files.
+ */
 export class RetryingUploadCleaner {
   constructor(
     private readonly unlinkFile: UploadUnlink = unlink,
@@ -102,6 +113,11 @@ export class RetryingUploadCleaner {
   }
 }
 
+/**
+ * Multer storage engine that writes uploaded files to a hardened directory,
+ * guards against symlink attacks, and cleans up partial files on request
+ * abort or error. Key methods: _handleFile, _removeFile.
+ */
 export class SecureUploadStorage implements multer.StorageEngine {
   constructor(
     private readonly directory: string,

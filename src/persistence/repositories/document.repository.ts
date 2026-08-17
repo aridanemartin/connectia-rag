@@ -63,6 +63,12 @@ function toDocumentVersion(row: DocumentVersionRow): DocumentVersion {
   };
 }
 
+/**
+ * Sqlite repository for documents and their versions: upserts indexing
+ * inputs, drives state transitions (INDEXING → READY/FAILED → ACTIVE →
+ * ARCHIVED), and queries active/preview versions. Key methods:
+ * upsertIndexing, markReady, markFailed, activate, archive.
+ */
 export class DocumentRepository {
   constructor(
     private readonly database: DatabaseConnection,

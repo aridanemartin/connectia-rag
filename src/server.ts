@@ -17,6 +17,10 @@ type ApplicationFactory = (
   dependencies: Partial<AppDependencies>,
 ) => ReturnType<typeof createApp>;
 
+/**
+ * Thrown when application activity does not settle within the shutdown abort
+ * grace period, signaling that a forced shutdown is required.
+ */
 export class ShutdownActivityTimeoutError extends Error {
   constructor() {
     super("Application activity did not settle after shutdown abort");

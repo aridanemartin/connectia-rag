@@ -96,6 +96,12 @@ function safeErrorMessage(message: string): string {
     .slice(0, 500);
 }
 
+/**
+ * Sqlite repository for indexing jobs: enqueues idempotent jobs, leases the
+ * next queued job, tracks progress, completes/fails/releases jobs, and
+ * recovers expired leases. Key methods: enqueue, leaseNext, progress,
+ * complete, fail, release, recoverExpired.
+ */
 export class IndexingJobRepository {
   constructor(
     private readonly database: DatabaseConnection,
@@ -390,6 +396,10 @@ export class IndexingJobRepository {
   }
 }
 
+/**
+ * Thrown when a job state transition is attempted from an incompatible
+ * current state (e.g. failing an already completed job).
+ */
 class InvalidJobStateError extends Error {
   constructor(jobId: string, expected: string) {
     super(`Indexing job ${jobId} must be ${expected}`);
@@ -397,6 +407,10 @@ class InvalidJobStateError extends Error {
   }
 }
 
+/**
+ * Thrown when a job operation requires an active lease but the lease has
+ * been lost (expired or claimed by another owner).
+ */
 export class LeaseLostError extends Error {
   constructor(kind: string, jobId: string, owner: string) {
     super(`${kind} job ${jobId} does not have an active lease for ${owner}`);

@@ -16,6 +16,11 @@ export interface LifecycleReader {
   allowedPreviewVersions(documentId: string, versionId: string): string[];
 }
 
+/**
+ * Coordinates document-version lifecycle operations (activate, archive) and
+ * exposes which versions are allowed for answers and previews, delegating
+ * the underlying persistence to a LifecycleServiceReader.
+ */
 export class LifecycleService implements LifecycleReader {
   constructor(private readonly documents: LifecycleServiceReader) {}
 

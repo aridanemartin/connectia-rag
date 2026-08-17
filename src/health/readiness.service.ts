@@ -48,6 +48,11 @@ const systemTimer: ReadinessTimer = {
 const status = (ready: boolean): DependencyStatus =>
   ready ? "ready" : "not_ready";
 
+/**
+ * Reports service readiness by probing sqlite, Qdrant, and the model
+ * provider within a deadline, and aggregating the results. Key method:
+ * check().
+ */
 export class ReadinessService implements Readiness {
   constructor(
     private readonly config: AppConfig,
@@ -120,6 +125,10 @@ export class ReadinessService implements Readiness {
   }
 }
 
+/**
+ * Sqlite health probe that runs a quick_check pragma against the database
+ * file at the configured path. Key method: health().
+ */
 class SqliteFileHealth implements SqliteHealth {
   constructor(private readonly path: string) {}
 

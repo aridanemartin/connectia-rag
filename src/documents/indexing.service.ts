@@ -120,6 +120,11 @@ async function hashFile(path: string, signal?: AbortSignal): Promise<string> {
   return hash.digest("hex");
 }
 
+/**
+ * Accepts indexing requests: verifies the PDF signature, computes content
+ * and request hashes, and idempotently enqueues an indexing job inside a
+ * database transaction. Key method: enqueue(input, signal).
+ */
 export class IndexingService implements IndexingEnqueuer {
   constructor(
     private readonly database: DatabaseConnection,

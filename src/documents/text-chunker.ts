@@ -37,6 +37,9 @@ const SAFE_ERROR_MESSAGES: Record<TextChunkingErrorCode, string> = {
   PDF_CHUNK_EMPTY: "El PDF contiene un fragmento de texto vacío.",
 };
 
+/**
+ * Thrown when text chunking fails (invalid page metadata or empty chunk).
+ */
 export class TextChunkingError extends Error {
   constructor(readonly code: TextChunkingErrorCode) {
     super(SAFE_ERROR_MESSAGES[code]);
@@ -109,6 +112,11 @@ function contentHash(pages: readonly ExtractedPage[]): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+/**
+ * Splits normalized PDF pages into deterministic, stable-addressable chunks
+ * by section and length, assigning each chunk a content-derived hash and a
+ * UUIDv5 point id. Key method: split(input).
+ */
 export class TextChunker {
   private readonly splitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1_000,

@@ -57,6 +57,11 @@ function toIsoString(value: string | Date): string {
   return date.toISOString();
 }
 
+/**
+ * Sqlite repository for diagnostics entries: inserts, queries by id, lists
+ * recent entries, counts, and purges expired records. Key methods: insert,
+ * find, listRecent, count, purgeExpired.
+ */
 export class DiagnosticsRepository {
   constructor(
     private readonly database: DatabaseConnection,
