@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { v5 as uuidv5 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config/env.js";
 import { LifecycleService } from "../../src/documents/lifecycle.service.js";
@@ -65,6 +66,11 @@ interface EvaluationManifest {
 // ── Test configuration ───────────────────────────────────────────────────
 
 const DIMENSIONS = 128;
+
+// Fixed namespace for deriving deterministic UUID point IDs — mirrors
+// production (src/documents/text-chunker.ts) which uses uuidv5 with a fixed
+// namespace. Qdrant rejects non-UUID / non-unsigned-integer point IDs.
+const EVAL_CHUNK_NAMESPACE = "8f3b2c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5b";
 
 function testConfig(ollamaUrl: string, qdrantUrl: string, collection: string) {
   return loadConfig({
@@ -303,7 +309,10 @@ describe("Evaluaciones RAG (Español)", () => {
       for (const [docId, doc] of Object.entries(FIXTURE_DOCUMENTS)) {
         const versionId = `eval-${docId}`;
         for (const page of doc.pages) {
-          const chunkId = `${docId}-p${page.page}`;
+          const chunkId = uuidv5(
+            `${docId}-p${page.page}`,
+            EVAL_CHUNK_NAMESPACE,
+          );
           const vector = deterministicEmbedding(page.text);
           points.push({
             id: chunkId,

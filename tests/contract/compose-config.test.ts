@@ -290,8 +290,21 @@ describe("Docker Compose production config", () => {
           ? command
           : "";
       const normalized = script.replace(/\$\$\{/g, "$").replace(/\$\{/g, "$");
-      expect(normalized).toContain("$OLLAMA_CHAT_MODEL");
-      expect(normalized).toContain("$OLLAMA_EMBEDDING_MODEL");
+      // The command is written with variable-with-default syntax:
+      //   ollama pull "${OLLAMA_CHAT_MODEL:-gemma3:12b}"
+      //   ollama pull "${OLLAMA_EMBEDDING_MODEL:-qwen3-embedding:0.6b}"
+      // When Docker is unavailable, the YAML fallback preserves the raw
+      // variable reference; when Docker IS available (as in CI), `docker
+      // compose config` resolves it down to the default value. Accept either
+      // form so the intent (pull both configured models) holds everywhere.
+      const chatModelReferenced =
+        normalized.includes("$OLLAMA_CHAT_MODEL") ||
+        normalized.includes("gemma3:12b");
+      const embeddingModelReferenced =
+        normalized.includes("$OLLAMA_EMBEDDING_MODEL") ||
+        normalized.includes("qwen3-embedding:0.6b");
+      expect(chatModelReferenced).toBe(true);
+      expect(embeddingModelReferenced).toBe(true);
       expect(normalized).toContain("pull");
     });
   });
