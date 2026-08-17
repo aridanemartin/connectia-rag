@@ -2,20 +2,26 @@ import { realpathSync } from "node:fs";
 import type { Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { type AppDependencies, createApp } from "./api/app.js";
-import { type AppConfig, loadConfig } from "./config/env.js";
-import {
-  createIndexingComposition,
-  type IndexingComposition,
-} from "./documents/indexing.service.js";
+import { loadConfig } from "./config/env.js";
+import { createIndexingComposition } from "./documents/indexing.service.js";
+import type {
+  ApplicationFactory,
+  DirectExecutionInput,
+  RunningServer,
+  StartServerOptions,
+} from "./server.types.js";
 import { ActivityTracker } from "./shared/activity-tracker.js";
+
+export type {
+  ApplicationFactory,
+  CompositionFactory,
+  DirectExecutionInput,
+  RunningServer,
+  StartServerOptions,
+} from "./server.types.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_ABORT_GRACE_MS = 1_000;
-
-type CompositionFactory = (config: AppConfig) => IndexingComposition;
-type ApplicationFactory = (
-  dependencies: Partial<AppDependencies>,
-) => ReturnType<typeof createApp>;
 
 /**
  * Thrown when application activity does not settle within the shutdown abort
@@ -26,28 +32,6 @@ export class ShutdownActivityTimeoutError extends Error {
     super("Application activity did not settle after shutdown abort");
     this.name = "ShutdownActivityTimeoutError";
   }
-}
-
-export interface StartServerOptions {
-  config?: AppConfig;
-  createComposition?: CompositionFactory;
-  createApplication?: ApplicationFactory;
-  registerSignalHandlers?: boolean;
-  shutdownTimeoutMs?: number;
-  shutdownAbortGraceMs?: number;
-}
-
-export interface RunningServer {
-  server: Server;
-  composition: IndexingComposition;
-  activity: ActivityTracker;
-  shutdown(): Promise<void>;
-}
-
-export interface DirectExecutionInput {
-  importMetaMain: boolean | undefined;
-  moduleUrl: string;
-  argvEntry: string | undefined;
 }
 
 export function isDirectExecution(input: DirectExecutionInput): boolean {

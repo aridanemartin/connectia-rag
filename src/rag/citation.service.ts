@@ -1,14 +1,6 @@
-import type { SearchHit } from "./vector-store.js";
+import type { Citation, SearchHit } from "./rag.types.js";
 
-export interface Citation {
-  documentId: string;
-  versionId: string;
-  documentTitle: string;
-  page: number;
-  section: string | null;
-  academicYear: string;
-  excerpt: string;
-}
+export type { Citation } from "./rag.types.js";
 
 const EXCERPT_MAX_LENGTH = 300;
 

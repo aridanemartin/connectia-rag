@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { AppError } from "../api/errors.js";
-import type { AppConfig } from "../config/env.js";
+import type { AppConfig } from "../config/config.types.js";
 import { DiagnosticsService } from "../diagnostics/diagnostics.service.js";
 import { OllamaProvider } from "../models/ollama-provider.js";
 import {
@@ -25,7 +25,12 @@ import { type Clock, systemClock } from "../shared/clock.js";
 import { CleanupWorker } from "../workers/cleanup.worker.js";
 import { IndexingWorker } from "../workers/indexing.worker.js";
 import {
+  type DocumentWriter,
+  type IndexingComposition,
   type IndexingDocumentInput,
+  type IndexingEnqueuer,
+  type IndexingRequest,
+  type JobWriter,
   PersistenceConflictError,
 } from "./document.types.js";
 import { LifecycleService } from "./lifecycle.service.js";
@@ -37,25 +42,13 @@ import {
   type UploadUnlink,
 } from "./upload-storage.js";
 
-export interface IndexingRequest {
-  idempotencyKey: string;
-  documentId: string;
-  versionId: string;
-  title: string;
-  academicYear: string;
-  description: string | null;
-  tempFilePath: string;
-}
-
-export interface IndexingEnqueuer {
-  enqueue(input: IndexingRequest, signal?: AbortSignal): Promise<IndexingJob>;
-}
-
-type DocumentWriter = Pick<DocumentRepository, "upsertIndexing">;
-type JobWriter = Pick<
-  IndexingJobRepository,
-  "enqueue" | "findByIdempotencyKey"
->;
+export type {
+  DocumentWriter,
+  IndexingComposition,
+  IndexingEnqueuer,
+  IndexingRequest,
+  JobWriter,
+} from "./document.types.js";
 
 function canonicalMetadata(input: IndexingRequest): string {
   return JSON.stringify({
@@ -192,21 +185,6 @@ export class IndexingService implements IndexingEnqueuer {
       throw error;
     }
   }
-}
-
-export interface IndexingComposition {
-  indexingService: IndexingService;
-  jobs: Pick<IndexingJobRepository, "find">;
-  worker: IndexingWorker;
-  lifecycle: LifecycleService;
-  cleanupWorker: CleanupWorker;
-  questionService: QuestionService;
-  diagnostics: DiagnosticsService;
-  database: DatabaseConnection;
-  sweepOrphans(): Promise<number>;
-  recoverExpiredJobs(): number;
-  recoverExpiredCleanupJobs(): number;
-  close(): void;
 }
 
 export function createIndexingComposition(

@@ -16,20 +16,16 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Request } from "express";
 import type multer from "multer";
 import type { ActivityTracker } from "../shared/activity-tracker.js";
+import type { UploadFailureReporter, UploadUnlink } from "./document.types.js";
+
+export type {
+  UploadFailureReport,
+  UploadFailureReporter,
+  UploadUnlink,
+} from "./document.types.js";
 
 export const SERVER_UPLOAD_FILENAME_PATTERN =
   /^connectia-upload-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$/u;
-
-export type UploadUnlink = (path: string) => Promise<void>;
-
-export interface UploadFailureReport {
-  code: "UPLOAD_CLEANUP_FAILED";
-  phase: "terminal_cleanup";
-}
-
-export type UploadFailureReporter = (
-  report: Readonly<UploadFailureReport>,
-) => void | Promise<void>;
 
 /**
  * Thrown when the secure upload directory cannot be prepared or verified.

@@ -1,34 +1,16 @@
-import type { Clock } from "../../shared/clock.js";
-import type { DatabaseConnection } from "../database.js";
+import type { Clock } from "../../shared/shared.types.js";
+import type {
+  DatabaseConnection,
+  DiagnosticEntry,
+  DiagnosticInput,
+  DiagnosticRow,
+} from "../persistence.types.js";
 
-export interface DiagnosticInput {
-  id: string;
-  requestId: string;
-  question: string;
-  answer: string | null;
-  retrievedChunkIds: string[];
-  expiresAt: string | Date;
-}
-
-export interface DiagnosticEntry {
-  id: string;
-  requestId: string;
-  question: string;
-  answer: string | null;
-  retrievedChunkIds: string[];
-  expiresAt: string;
-  createdAt: string;
-}
-
-interface DiagnosticRow {
-  id: string;
-  request_id: string;
-  question: string;
-  answer: string | null;
-  retrieved_chunk_ids: string;
-  expires_at: string;
-  created_at: string;
-}
+export type {
+  DiagnosticEntry,
+  DiagnosticInput,
+  DiagnosticRow,
+} from "../persistence.types.js";
 
 function toDiagnosticEntry(row: DiagnosticRow): DiagnosticEntry {
   const chunkIds: unknown = JSON.parse(row.retrieved_chunk_ids);

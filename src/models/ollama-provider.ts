@@ -1,25 +1,15 @@
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
-import type { AppConfig } from "../config/env.js";
+import type { AppConfig } from "../config/config.types.js";
 import type {
+  ChatBoundary,
+  EmbeddingsBoundary,
   GroundedPrompt,
   ModelHealth,
   ModelProvider,
-} from "./model-provider.js";
+  OllamaProviderDependencies,
+} from "./models.types.js";
 
-interface ChatBoundary {
-  invoke(input: unknown): Promise<unknown>;
-}
-
-interface EmbeddingsBoundary {
-  embedDocuments(texts: string[]): Promise<number[][]>;
-  embedQuery(text: string): Promise<number[]>;
-}
-
-export interface OllamaProviderDependencies {
-  fetch: typeof fetch;
-  chat: ChatBoundary;
-  embeddings: EmbeddingsBoundary;
-}
+export type { ChatBoundary, EmbeddingsBoundary, OllamaProviderDependencies };
 
 function unavailableHealth(): ModelHealth {
   return {

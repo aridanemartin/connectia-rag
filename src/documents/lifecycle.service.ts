@@ -1,20 +1,13 @@
-import type { DocumentVersion } from "./document.types.js";
+import type {
+  DocumentVersion,
+  LifecycleReader,
+  LifecycleServiceReader,
+} from "./document.types.js";
 
-export interface LifecycleServiceReader {
-  activate(documentId: string, versionId: string): DocumentVersion;
-  archive(documentId: string, versionId: string): DocumentVersion;
-  activeVersionIds(): string[];
-  activeVersionIdsByDocumentIds(documentIds: readonly string[]): string[];
-  previewVersionIds(documentId: string, versionId: string): string[];
-}
-
-export interface LifecycleReader {
-  activate(documentId: string, versionId: string): DocumentVersion;
-  archive(documentId: string, versionId: string): DocumentVersion;
-  allowedActiveVersions(): string[];
-  allowedActiveVersionsByDocumentIds(documentIds: readonly string[]): string[];
-  allowedPreviewVersions(documentId: string, versionId: string): string[];
-}
+export type {
+  LifecycleReader,
+  LifecycleServiceReader,
+} from "./document.types.js";
 
 /**
  * Coordinates document-version lifecycle operations (activate, archive) and

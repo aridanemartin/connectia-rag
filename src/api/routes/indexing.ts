@@ -3,11 +3,11 @@ import type { Request, RequestHandler } from "express";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import type { AppConfig } from "../../config/env.js";
+import type { AppConfig } from "../../config/config.types.js";
 import type {
   IndexingEnqueuer,
   IndexingRequest,
-} from "../../documents/indexing.service.js";
+} from "../../documents/document.types.js";
 import {
   RetryingUploadCleaner,
   SecureUploadStorage,
@@ -16,15 +16,21 @@ import {
   UploadStorageError,
   type UploadUnlink,
 } from "../../documents/upload-storage.js";
-import type {
-  IndexingJob,
-  IndexingJobStatus,
-} from "../../persistence/repositories/indexing-job.repository.js";
+import type { IndexingJob } from "../../persistence/persistence.types.js";
 import {
   ActivityNotAcceptedError,
   type ActivityTracker,
 } from "../../shared/activity-tracker.js";
+import type {
+  IndexingJobStatusReader,
+  IndexingJobStatusResponse,
+} from "../api.types.js";
 import { AppError } from "../errors.js";
+
+export type {
+  IndexingJobStatusReader,
+  IndexingJobStatusResponse,
+} from "../api.types.js";
 
 const safeCanonicalText = (minimum: number, maximum: number) =>
   z
@@ -228,23 +234,7 @@ function mapUploadError(error: unknown): AppError {
   }
 }
 
-export interface IndexingJobStatusReader {
-  find(jobId: string): IndexingJob | undefined;
-}
-
 const jobIdParamSchema = z.uuid();
-
-interface IndexingJobStatusResponse {
-  jobId: string;
-  documentId: string;
-  versionId: string;
-  status: IndexingJobStatus;
-  progress: number;
-  stage: string;
-  errorCode: string | null;
-  errorMessage: string | null;
-  completedAt: string | null;
-}
 
 function toStatusResponse(job: IndexingJob): IndexingJobStatusResponse {
   return {

@@ -4,16 +4,13 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clock } from "../shared/clock.js";
 import { systemClock } from "../shared/clock.js";
-import type { DatabaseConnection } from "./database.js";
+import type {
+  AppliedMigrationRow,
+  DatabaseConnection,
+  Migration,
+} from "./persistence.types.js";
 
-export interface Migration {
-  id: string;
-  sql: string;
-}
-
-interface AppliedMigrationRow {
-  checksum: string;
-}
+export type { AppliedMigrationRow, Migration } from "./persistence.types.js";
 
 function defaultMigrations(): Migration[] {
   const besideModule = fileURLToPath(

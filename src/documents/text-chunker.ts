@@ -1,12 +1,21 @@
 import { createHash } from "node:crypto";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { v5 as uuidv5 } from "uuid";
-import type { ChunkPayload } from "../rag/vector-store.js";
-import {
-  type ExtractedPage,
-  hasExtractableText,
-  normalizeExtractedText,
-} from "./pdf-extractor.js";
+import type {
+  Chunk,
+  ChunkInput,
+  ExtractedPage,
+  PageSection,
+  TextChunkingErrorCode,
+} from "./document.types.js";
+import { hasExtractableText, normalizeExtractedText } from "./pdf-extractor.js";
+
+export type {
+  Chunk,
+  ChunkInput,
+  PageSection,
+  TextChunkingErrorCode,
+} from "./document.types.js";
 
 export const CHUNK_POINT_NAMESPACE = "1f588a94-853c-5fd6-a703-bd57aaf65a5a";
 
@@ -15,22 +24,6 @@ export const CHUNK_POINT_NAMESPACE = "1f588a94-853c-5fd6-a703-bd57aaf65a5a";
 const CONTENT_PAGE_SEPARATOR = "\n\f\n";
 const MAX_HEADING_CHARACTERS = 80;
 const MAX_HEADING_WORDS = 10;
-
-export interface ChunkInput {
-  documentId: string;
-  versionId: string;
-  documentTitle: string;
-  academicYear: string;
-  pages: readonly ExtractedPage[];
-}
-
-export interface Chunk extends ChunkPayload {
-  pointId: string;
-}
-
-export type TextChunkingErrorCode =
-  | "PDF_PAGE_METADATA_INVALID"
-  | "PDF_CHUNK_EMPTY";
 
 const SAFE_ERROR_MESSAGES: Record<TextChunkingErrorCode, string> = {
   PDF_PAGE_METADATA_INVALID: "El PDF contiene páginas no válidas.",
@@ -45,11 +38,6 @@ export class TextChunkingError extends Error {
     super(SAFE_ERROR_MESSAGES[code]);
     this.name = "TextChunkingError";
   }
-}
-
-interface PageSection {
-  section: string | null;
-  text: string;
 }
 
 function isHeading(line: string): boolean {

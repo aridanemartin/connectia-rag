@@ -1,22 +1,16 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
-import type { AppConfig } from "../config/env.js";
+import type { AppConfig } from "../config/config.types.js";
 import type {
   ChunkPayload,
+  QdrantClientLike,
   SearchHit,
+  VectorConfiguration,
   VectorPoint,
   VectorStore,
   VectorStoreHealth,
-} from "./vector-store.js";
+} from "./rag.types.js";
 
-export type QdrantClientLike = Pick<
-  QdrantClient,
-  | "getCollections"
-  | "getCollection"
-  | "createCollection"
-  | "upsert"
-  | "query"
-  | "delete"
->;
+export type { QdrantClientLike, VectorConfiguration } from "./rag.types.js";
 
 /**
  * Thrown when a Qdrant operation fails (invalid payload, dimension mismatch,
@@ -27,11 +21,6 @@ export class VectorStoreError extends Error {
     super(code);
     this.name = "VectorStoreError";
   }
-}
-
-interface VectorConfiguration {
-  size: number;
-  distance: string;
 }
 
 function readUnnamedVectorConfiguration(

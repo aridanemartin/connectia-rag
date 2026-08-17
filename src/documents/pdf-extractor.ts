@@ -1,5 +1,19 @@
 import { open } from "node:fs/promises";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import type {
+  ExtractedPage,
+  LoadedPdfDocument,
+  PdfDocumentLoader,
+  PdfProcessingErrorCode,
+} from "./document.types.js";
+
+export type {
+  ExtractedPage,
+  LoadedPdfDocument,
+  PdfDocumentLoader,
+  PdfLoaderFactory,
+  PdfProcessingErrorCode,
+} from "./document.types.js";
 
 const PDF_MAGIC = Buffer.from("%PDF-", "ascii");
 const BYTE_ORDER_MARK = "\uFEFF";
@@ -12,30 +26,6 @@ const CONTROL_OR_FORMAT_CHARACTER = /[\p{Cc}\p{Cf}]/u;
  * deterministic normalization, excluding White_Space, controls, and formats.
  */
 export const MIN_EXTRACTED_CHARACTERS = 20;
-
-export interface ExtractedPage {
-  page: number;
-  text: string;
-}
-
-interface LoadedPdfDocument {
-  pageContent: unknown;
-  metadata: unknown;
-}
-
-export interface PdfDocumentLoader {
-  load(): Promise<readonly LoadedPdfDocument[]>;
-}
-
-export type PdfLoaderFactory = (path: string) => PdfDocumentLoader;
-
-export type PdfProcessingErrorCode =
-  | "PDF_SIGNATURE_INVALID"
-  | "PDF_CORRUPT"
-  | "PDF_ENCRYPTED"
-  | "PDF_PARSE_FAILED"
-  | "PDF_METADATA_INVALID"
-  | "PDF_TEXT_NOT_FOUND";
 
 const SAFE_ERROR_MESSAGES: Record<PdfProcessingErrorCode, string> = {
   PDF_SIGNATURE_INVALID: "El archivo no tiene una firma PDF válida.",

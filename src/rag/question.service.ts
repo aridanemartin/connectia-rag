@@ -1,30 +1,16 @@
-import type { ModelProvider } from "../models/model-provider.js";
-import type { DiagnosticsRecorder } from "../shared/shared.types.js";
-import { type AnswerDecision, answerDecisionSchema } from "./answer.schema.js";
-import {
-  buildCitations,
-  type Citation,
-  deduplicateHits,
-} from "./citation.service.js";
+import { answerDecisionSchema } from "./answer.schema.js";
+import { buildCitations, deduplicateHits } from "./citation.service.js";
 import { GROUNDING_SYSTEM_PROMPT } from "./prompt.js";
-import type { VectorStore } from "./vector-store.js";
+import type {
+  AnswerDecision,
+  QuestionResponse,
+  QuestionServiceDependencies,
+} from "./rag.types.js";
 
-export interface QuestionResponse {
-  status: "found" | "not_found" | "ambiguous";
-  answer: string | null;
-  citations: Citation[];
-}
-
-export interface QuestionServiceDependencies {
-  model: Pick<ModelProvider, "embedQuery" | "decide">;
-  vectorStore: Pick<VectorStore, "search">;
-  gate: {
-    run<T>(operation: () => Promise<T>): Promise<T>;
-  };
-  topK: number;
-  scoreThreshold: number;
-  diagnostics?: DiagnosticsRecorder;
-}
+export type {
+  QuestionResponse,
+  QuestionServiceDependencies,
+} from "./rag.types.js";
 
 function validateQuestion(question: string): string {
   const trimmed = question.trim();

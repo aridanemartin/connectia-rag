@@ -1,10 +1,8 @@
 import type { ErrorRequestHandler } from "express";
+import type { BodyParserError } from "../api.types.js";
 import { AppError } from "../errors.js";
 
-interface BodyParserError extends Error {
-  type?: string;
-  status?: number;
-}
+export type { BodyParserError } from "../api.types.js";
 
 function mapBodyParserError(error: BodyParserError): AppError | undefined {
   if (error.type === "entity.parse.failed") {

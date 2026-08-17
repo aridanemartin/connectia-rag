@@ -2,62 +2,21 @@ import {
   PersistenceConflictError,
   PersistenceNotFoundError,
 } from "../../documents/document.types.js";
-import type { Clock } from "../../shared/clock.js";
-import type { DatabaseConnection } from "../database.js";
+import type { Clock } from "../../shared/shared.types.js";
+import type {
+  DatabaseConnection,
+  EnqueueIndexingJobInput,
+  IndexingJob,
+  IndexingJobRow,
+} from "../persistence.types.js";
 
-export const indexingJobStatuses = [
-  "queued",
-  "processing",
-  "completed",
-  "failed",
-] as const;
-
-export type IndexingJobStatus = (typeof indexingJobStatuses)[number];
-
-export interface EnqueueIndexingJobInput {
-  id: string;
-  documentId: string;
-  versionId: string;
-  idempotencyKey: string;
-  requestHash: string;
-  contentHash: string;
-  tempFilePath: string;
-}
-
-export interface IndexingJob extends EnqueueIndexingJobInput {
-  status: IndexingJobStatus;
-  stage: string;
-  progress: number;
-  attempts: number;
-  leaseOwner: string | null;
-  leaseUntil: string | null;
-  errorCode: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  completedAt: string | null;
-}
-
-interface IndexingJobRow {
-  id: string;
-  document_id: string;
-  version_id: string;
-  idempotency_key: string;
-  request_hash: string;
-  content_hash: string;
-  temp_file_path: string;
-  status: IndexingJobStatus;
-  stage: string;
-  progress: number;
-  attempts: number;
-  lease_owner: string | null;
-  lease_until: string | null;
-  error_code: string | null;
-  error_message: string | null;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}
+export type {
+  EnqueueIndexingJobInput,
+  IndexingJob,
+  IndexingJobRow,
+  IndexingJobStatus,
+} from "../persistence.types.js";
+export { indexingJobStatuses } from "../persistence.types.js";
 
 function toIndexingJob(row: IndexingJobRow): IndexingJob {
   return {

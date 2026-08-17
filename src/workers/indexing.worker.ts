@@ -1,23 +1,16 @@
 import { setTimeout as setTimeoutPromise } from "node:timers/promises";
-import type { DocumentVersion } from "../documents/document.types.js";
-import {
-  type PdfExtractor,
-  PdfProcessingError,
-} from "../documents/pdf-extractor.js";
-import {
-  type Chunk,
-  type TextChunker,
-  TextChunkingError,
-} from "../documents/text-chunker.js";
-import type { RetryingUploadCleaner } from "../documents/upload-storage.js";
-import type { ModelProvider } from "../models/model-provider.js";
+import { PdfProcessingError } from "../documents/pdf-extractor.js";
+import { type Chunk, TextChunkingError } from "../documents/text-chunker.js";
 import {
   type IndexingJob,
   LeaseLostError,
 } from "../persistence/repositories/indexing-job.repository.js";
 import { VectorStoreError } from "../rag/qdrant-vector-store.js";
-import type { ChunkPayload, VectorStore } from "../rag/vector-store.js";
-import type { Clock } from "../shared/clock.js";
+import type { ChunkPayload } from "../rag/rag.types.js";
+import type {
+  IndexingWorkerDependencies,
+  ProcessingStage,
+} from "./workers.types.js";
 
 export const INDEXING_STAGES = {
   extracting: 15,
@@ -29,60 +22,6 @@ export const INDEXING_STAGES = {
 } as const;
 
 const RETRY_DELAYS_MS = [250, 500, 1000] as const;
-
-type ProcessingStage =
-  | "extracting"
-  | "chunking"
-  | "embedding"
-  | "storing"
-  | "finalizing";
-
-type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
-
-export interface IndexingJobLeaseRepository {
-  leaseNext(owner: string, leaseMs: number): IndexingJob | undefined;
-  progress(
-    jobId: string,
-    owner: string,
-    stage: string,
-    progress: number,
-  ): IndexingJob;
-  complete(jobId: string, owner: string): IndexingJob;
-  fail(
-    jobId: string,
-    owner: string,
-    code: string,
-    message: string,
-  ): IndexingJob;
-  release(jobId: string, owner: string): IndexingJob;
-  recoverExpired(): number;
-}
-
-export interface IndexingDocumentStateWriter {
-  findVersion(versionId: string): DocumentVersion | undefined;
-  markReady(versionId: string): DocumentVersion;
-  markFailed(versionId: string): DocumentVersion;
-}
-
-export interface IndexingWorkerDependencies {
-  jobs: IndexingJobLeaseRepository;
-  documents: IndexingDocumentStateWriter;
-  extractor: Pick<PdfExtractor, "extract">;
-  chunker: Pick<TextChunker, "split">;
-  models: Pick<ModelProvider, "embedDocuments">;
-  vectorStore: Pick<
-    VectorStore,
-    "ensureCollection" | "upsert" | "deleteVersion"
-  >;
-  cleaner: Pick<RetryingUploadCleaner, "remove">;
-  clock: Clock;
-  owner: string;
-  leaseMs: number;
-  embedBatchSize: number;
-  pollIntervalMs: number;
-  embeddingDimensions: number;
-  sleep?: SleepFn;
-}
 
 /**
  * Classifies a caught error as a typed transient dependency failure eligible

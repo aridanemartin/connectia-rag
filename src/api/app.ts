@@ -1,19 +1,16 @@
 import express, { type Express, type Request, type Response } from "express";
-import pino, { type Logger } from "pino";
+import pino from "pino";
 import { pinoHttp } from "pino-http";
-import { type AppConfig, loadConfig } from "../config/env.js";
-import type { IndexingEnqueuer } from "../documents/indexing.service.js";
-import type { LifecycleReader } from "../documents/lifecycle.service.js";
+import { loadConfig } from "../config/env.js";
 import type {
+  IndexingEnqueuer,
+  LifecycleReader,
   UploadFailureReporter,
-  UploadUnlink,
-} from "../documents/upload-storage.js";
-import {
-  createDefaultReadiness,
-  type Readiness,
-} from "../health/readiness.service.js";
+} from "../documents/document.types.js";
+import { createDefaultReadiness } from "../health/readiness.service.js";
 import type { QuestionService } from "../rag/question.service.js";
 import { ActivityTracker } from "../shared/activity-tracker.js";
+import type { AppDependencies } from "./api.types.js";
 import { AppError } from "./errors.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -31,18 +28,7 @@ import {
 } from "./routes/indexing.js";
 import { createQuestionsRouter } from "./routes/questions.js";
 
-export interface AppDependencies {
-  config: AppConfig;
-  logger: Logger;
-  readiness: Readiness;
-  indexingService: IndexingEnqueuer;
-  indexingJobs: IndexingJobStatusReader;
-  lifecycle: LifecycleReader;
-  questionService: Pick<QuestionService, "ask">;
-  uploadUnlink: UploadUnlink;
-  uploadFailureReporter: UploadFailureReporter;
-  activity: ActivityTracker;
-}
+export type { AppDependencies } from "./api.types.js";
 
 function unavailableIndexingService(): IndexingEnqueuer {
   return {

@@ -1,3 +1,7 @@
+export interface Clock {
+  now(): Date;
+}
+
 export interface DiagnosticsRecorder {
   record(entry: {
     requestId: string;

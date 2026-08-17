@@ -1,38 +1,15 @@
 import { setTimeout as setTimeoutPromise } from "node:timers/promises";
-import type { CleanupJob } from "../persistence/repositories/cleanup.repository.js";
-import type { Clock } from "../shared/clock.js";
+import type { CleanupJob } from "../persistence/persistence.types.js";
 import { isTransientDependencyError } from "./indexing.worker.js";
+import type { CleanupWorkerDependencies } from "./workers.types.js";
+
+export type {
+  CleanupJobLeaseRepository,
+  CleanupVectorStore,
+  CleanupWorkerDependencies,
+} from "./workers.types.js";
 
 export const CLEANUP_RETRY_DELAYS_MS = [250, 500, 1000] as const;
-
-type SleepFn = (ms: number) => Promise<void>;
-
-export interface CleanupJobLeaseRepository {
-  leaseNext(owner: string, leaseMs: number): CleanupJob | undefined;
-  retry(
-    jobId: string,
-    owner: string,
-    code: string,
-    message: string,
-    delayMs: number,
-  ): CleanupJob;
-  complete(jobId: string, owner: string): boolean;
-  recoverExpired(): number;
-}
-
-export interface CleanupVectorStore {
-  deleteVersion(versionId: string): Promise<void>;
-}
-
-export interface CleanupWorkerDependencies {
-  jobs: CleanupJobLeaseRepository;
-  vectorStore: CleanupVectorStore;
-  clock: Clock;
-  owner: string;
-  leaseMs: number;
-  pollIntervalMs: number;
-  sleep?: SleepFn;
-}
 
 /**
  * Background loop that leases queued vector-cleanup jobs, deletes the

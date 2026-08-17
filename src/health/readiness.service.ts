@@ -1,43 +1,24 @@
-import type { AppConfig } from "../config/env.js";
-import type { ModelProvider } from "../models/model-provider.js";
+import type { AppConfig } from "../config/config.types.js";
 import { OllamaProvider } from "../models/ollama-provider.js";
 import { closeDatabase, openDatabase } from "../persistence/database.js";
 import { QdrantVectorStore } from "../rag/qdrant-vector-store.js";
-import type { VectorStore } from "../rag/vector-store.js";
+import type {
+  DependencyStatus,
+  Readiness,
+  ReadinessCheck,
+  ReadinessResult,
+  ReadinessTimer,
+  SqliteHealth,
+} from "./health.types.js";
 
-export type DependencyStatus = "ready" | "not_ready";
-
-export interface ReadinessResult {
-  status: "ready" | "not_ready";
-  dependencies: {
-    sqlite: DependencyStatus;
-    qdrant: DependencyStatus;
-    collection: DependencyStatus;
-    ollama: DependencyStatus;
-    chatModel: DependencyStatus;
-    embeddingModel: DependencyStatus;
-    embeddingDimensions: DependencyStatus;
-  };
-}
-
-interface SqliteHealth {
-  health(): Promise<boolean> | boolean;
-}
-
-export interface ReadinessCheck {
-  sqlite: SqliteHealth;
-  vectorStore: VectorStore;
-  modelProvider: ModelProvider;
-}
-
-export interface Readiness {
-  check(): Promise<ReadinessResult>;
-}
-
-export interface ReadinessTimer {
-  setTimeout(callback: () => void, delayMs: number): unknown;
-  clearTimeout(handle: unknown): void;
-}
+export type {
+  DependencyStatus,
+  Readiness,
+  ReadinessCheck,
+  ReadinessResult,
+  ReadinessTimer,
+  SqliteHealth,
+} from "./health.types.js";
 
 const systemTimer: ReadinessTimer = {
   setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),

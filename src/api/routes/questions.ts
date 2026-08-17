@@ -1,13 +1,16 @@
 import type { Request, RequestHandler, Response } from "express";
 import { Router } from "express";
 import { z } from "zod";
-import type { LifecycleReader } from "../../documents/lifecycle.service.js";
+import type { LifecycleReader } from "../../documents/document.types.js";
 import type { QuestionService } from "../../rag/question.service.js";
 import {
   ActivityNotAcceptedError,
   type ActivityTracker,
 } from "../../shared/activity-tracker.js";
+import type { QuestionRouteDependencies } from "../api.types.js";
 import { AppError } from "../errors.js";
+
+export type { QuestionRouteDependencies } from "../api.types.js";
 
 const questionBodySchema = z
   .object({
@@ -57,12 +60,6 @@ export function mapQuestionError(error: unknown): never {
     default:
       throw error;
   }
-}
-
-interface QuestionRouteDependencies {
-  questionService: Pick<QuestionService, "ask">;
-  lifecycle: LifecycleReader;
-  activity?: ActivityTracker;
 }
 
 export function setRetryAfterIfSaturated(

@@ -1,30 +1,18 @@
 import { randomUUID } from "node:crypto";
 import {
   type DocumentVersion,
-  type DocumentVersionState,
   type IndexingDocumentInput,
   InvalidStateTransitionError,
   PersistenceConflictError,
   PersistenceNotFoundError,
 } from "../../documents/document.types.js";
-import type { Clock } from "../../shared/clock.js";
-import type { DatabaseConnection } from "../database.js";
+import type { Clock } from "../../shared/shared.types.js";
+import type {
+  DatabaseConnection,
+  DocumentVersionRow,
+} from "../persistence.types.js";
 
-interface DocumentVersionRow {
-  id: string;
-  document_id: string;
-  title: string;
-  description: string | null;
-  academic_year: string;
-  content_hash: string;
-  state: DocumentVersionState;
-  created_at: string;
-  updated_at: string;
-  ready_at: string | null;
-  activated_at: string | null;
-  archived_at: string | null;
-  failed_at: string | null;
-}
+export type { DocumentVersionRow } from "../persistence.types.js";
 
 const versionSelect = `
   SELECT
