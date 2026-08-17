@@ -21,7 +21,7 @@ export interface QdrantTestContext {
   container: StartedTestContainer;
 }
 
-const QDRANT_IMAGE = "qdrant/qdrant:v1.13.7";
+const QDRANT_IMAGE = "qdrant/qdrant:v1.18.3";
 const QDRANT_HTTP_PORT = 6333;
 
 let contextCount = 0;
@@ -50,7 +50,7 @@ export async function isDockerAvailable(): Promise<boolean> {
 /**
  * Start a Qdrant test container.
  *
- * By default uses `qdrant/qdrant:v1.13.7`. Callers should wrap in
+ * By default uses `qdrant/qdrant:v1.18.3`. Callers should wrap in
  * a describe with a long timeout (60s+) since pulling the image
  * can be slow on the first run.
  *
