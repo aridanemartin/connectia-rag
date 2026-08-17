@@ -27,7 +27,7 @@ function deterministicEmbedding(text: string, dimensions: number): number[] {
   const hash = createHash("sha256").update(text).digest();
   const values: number[] = [];
   for (let i = 0; i < dimensions; i++) {
-    values.push(hash[i % hash.length] / 128 - 1);
+    values.push(hash[i % hash.length] / 255);
   }
   const magnitude = Math.sqrt(values.reduce((s, v) => s + v * v, 0));
   return magnitude > 0 ? values.map((v) => v / magnitude) : values;
