@@ -54,60 +54,60 @@ describe("README.md — 14 numbered procedures", () => {
     expect(procedureHeadings?.length).toBe(14);
   });
 
-  it("contains procedure 1 — Prerequisites", () => {
-    expect(readme).toMatch(/## 1\.\s*Prerequisites/i);
+  it("contains procedure 1 — Configuration", () => {
+    expect(readme).toMatch(/## 1\.\s*Configuration/i);
   });
 
-  it("contains procedure 2 — Clone the repository", () => {
-    expect(readme).toMatch(/## 2\.\s*Clone/i);
+  it("contains procedure 2 — Stack startup", () => {
+    expect(readme).toMatch(/## 2\.\s*Stack startup/i);
   });
 
-  it("contains procedure 3 — Configure environment", () => {
-    expect(readme).toMatch(/## 3\.\s*Configure/i);
+  it("contains procedure 3 — Model warmup", () => {
+    expect(readme).toMatch(/## 3\.\s*Model warmup/i);
   });
 
-  it("contains procedure 4 — Start the stack", () => {
-    expect(readme).toMatch(/## 4\.\s*Start/i);
+  it("contains procedure 4 — Fixture generation", () => {
+    expect(readme).toMatch(/## 4\.\s*Fixture generation/i);
   });
 
-  it("contains procedure 5 — Index documents", () => {
-    expect(readme).toMatch(/## 5\.\s*Index/i);
+  it("contains procedure 5 — Indexing", () => {
+    expect(readme).toMatch(/## 5\.\s*Indexing/i);
   });
 
-  it("contains procedure 6 — Activate a version", () => {
-    expect(readme).toMatch(/## 6\.\s*Activate/i);
+  it("contains procedure 6 — Activation", () => {
+    expect(readme).toMatch(/## 6\.\s*Activation/i);
   });
 
-  it("contains procedure 7 — Ask questions", () => {
-    expect(readme).toMatch(/## 7\.\s*Ask/i);
+  it("contains procedure 7 — Questions", () => {
+    expect(readme).toMatch(/## 7\.\s*Questions/i);
   });
 
-  it("contains procedure 8 — Preview a candidate version", () => {
+  it("contains procedure 8 — Preview", () => {
     expect(readme).toMatch(/## 8\.\s*Preview/i);
   });
 
-  it("contains procedure 9 — Archive a version", () => {
+  it("contains procedure 9 — Archive", () => {
     expect(readme).toMatch(/## 9\.\s*Archive/i);
   });
 
-  it("contains procedure 10 — Run tests", () => {
-    expect(readme).toMatch(/## 10\.\s*Run tests/i);
+  it("contains procedure 10 — Tests", () => {
+    expect(readme).toMatch(/## 10\.\s*Tests/i);
   });
 
-  it("contains procedure 11 — Load testing", () => {
-    expect(readme).toMatch(/## 11\.\s*Load/i);
+  it("contains procedure 11 — Load test", () => {
+    expect(readme).toMatch(/## 11\.\s*Load test/i);
   });
 
   it("contains procedure 12 — Diagnostics", () => {
     expect(readme).toMatch(/## 12\.\s*Diagnostics/i);
   });
 
-  it("contains procedure 13 — Backup and restore", () => {
-    expect(readme).toMatch(/## 13\.\s*Backup/i);
+  it("contains procedure 13 — Annual replacement", () => {
+    expect(readme).toMatch(/## 13\.\s*Annual replacement/i);
   });
 
-  it("contains procedure 14 — Production deployment", () => {
-    expect(readme).toMatch(/## 14\.\s*Production/i);
+  it("contains procedure 14 — Ubuntu backup/restore", () => {
+    expect(readme).toMatch(/## 14\.\s*Ubuntu backup\/restore/i);
   });
 
   it("mentions the compatibility API migration path", () => {
@@ -284,8 +284,17 @@ describe("CI workflow", () => {
     expect(ci).toMatch(/cache.*npm/);
   });
 
-  it("pins Qdrant image", () => {
-    expect(ci).toMatch(/qdrant\/qdrant:v1\.18\.3/);
+  it("pins Qdrant image to match compose.yaml", () => {
+    // The Qdrant version is pinned in qdrant-test-context.ts (for testcontainers)
+    // and in compose.yaml (for production). Both must match.
+    const qdrantContextPath = resolve(
+      PROJECT_ROOT,
+      "tests/support/qdrant-test-context.ts",
+    );
+    const qdrantContext = existsSync(qdrantContextPath)
+      ? readFile(qdrantContextPath)
+      : "";
+    expect(qdrantContext).toMatch(/qdrant\/qdrant:v1\.18\.3/);
   });
 
   it("does not contain real secrets", () => {

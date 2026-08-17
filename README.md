@@ -4,9 +4,7 @@ Teacher-owned, Spanish-only RAG service for the Connectia course project. The
 service is designed for Node.js and TypeScript with LangChain, Ollama, Qdrant,
 SQLite, and Docker Compose on Ubuntu Server.
 
----
-
-## 1. Prerequisites
+## Prerequisites
 
 - **Docker Engine** 27.x and **Docker Compose** plugin v2.x
 - **Node.js** 24.x (for local development without Docker)
@@ -14,26 +12,22 @@ SQLite, and Docker Compose on Ubuntu Server.
 - At least **8 GB RAM** and **4 CPU cores** (for Ollama `gemma3:12b`)
 - Ubuntu Server 24.04 LTS or compatible Linux
 
-Quick check:
-
 ```bash
+# Quick check
 docker --version
 docker compose version
 node --version   # 24.x required
-```
 
----
-
-## 2. Clone the repository
-
-```bash
+# Clone the repository
 git clone https://github.com/your-org/connectia-rag-demo.git
 cd connectia-rag-demo
 ```
 
 ---
 
-## 3. Configure environment
+## 1. Configuration
+
+Copy the environment template and set your own values:
 
 ```bash
 cp .env.example .env
@@ -53,7 +47,9 @@ The `.env` file is excluded from version control by `.gitignore`.
 
 ---
 
-## 4. Start the stack
+## 2. Stack startup
+
+Start all services with Docker Compose:
 
 ```bash
 docker compose up -d --build
@@ -65,7 +61,7 @@ This starts five services:
 |---|---|
 | `api` | RAG API (Express, port 3000) |
 | `ollama` | LLM inference server |
-| `model-init` | One-shot model downloader |
+| `model-init` | One-shot model downloader (see Section 3) |
 | `qdrant` | Vector database |
 | `caddy` | Reverse proxy (ports 80/443) |
 
@@ -75,15 +71,71 @@ Monitor the startup:
 docker compose logs -f api
 ```
 
-The first start downloads Ollama models (`gemma3:12b` and `qwen3-embedding:0.6b`)
-which can take several minutes. The API will not accept requests until all
-dependencies are healthy.
+---
+
+## 3. Model warmup
+
+The first start automatically downloads Ollama models (`gemma3:12b` and
+`qwen3-embedding:0.6b`) via the `model-init` service, which can take several
+minutes. The API will not accept requests until all dependencies are healthy.
+
+To wait for models to be ready from the command line (useful in scripts or
+after a restart):
+
+```bash
+npm run wait:models
+```
+
+This polls `OLLAMA_BASE_URL` (default `http://localhost:11434`) until both
+models are registered, with a 3-minute timeout.
+
+Verify models are loaded:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+The API's readiness endpoint reports dependency health:
+
+```bash
+curl http://localhost/health/ready
+```
 
 ---
 
-## 5. Index documents
+## 4. Fixture generation
 
-Index a PDF document via the API:
+Generate the synthetic Spanish corpus (deterministic PDFs, manifests, and
+metadata):
+
+```bash
+npm run fixtures:generate
+```
+
+This produces:
+- **PDFs** under `fixtures/pdfs/` — 11 PDFs covering ten topics plus one
+  replacement version for annual replacement testing
+- **Sources** under `fixtures/sources/` — JSON documents with Spanish text
+  content, fictional contact data under `example.invalid`
+- **Manifest** at `fixtures/corpus.manifest.json` — maps documents to versions,
+  academic years, and source files
+
+The fixture generator is deterministic: running it twice produces identical
+outputs (byte-stable PDFs).
+
+Seed all documents into the running API:
+
+```bash
+npm run corpus:seed
+```
+
+This indexes all 11 PDFs via the canonical HTTP API and activates them.
+
+---
+
+## 5. Indexing
+
+Index a single PDF document via the API:
 
 ```bash
 curl -X POST http://localhost/api/v1/indexing/jobs \
@@ -109,22 +161,12 @@ curl -H "Authorization: Bearer $(grep AUTH_TOKEN .env | cut -d= -f2)" \
   http://localhost/api/v1/indexing/jobs/<jobId>
 ```
 
-When the job reaches `status: "completed"`, the document is ready for
+When the job reaches `status: "completed"`, the document version is ready for
 activation.
-
-### Seed the corpus
-
-For a quick start, seed the entire course corpus:
-
-```bash
-tsx scripts/seed-corpus.ts
-```
-
-This indexes all 11 PDFs from `fixtures/pdfs/` and activates them.
 
 ---
 
-## 6. Activate a version
+## 6. Activation
 
 Activate a version so it becomes available for question answering:
 
@@ -144,7 +186,7 @@ automatically archives the previous one.
 
 ---
 
-## 7. Ask questions
+## 7. Questions
 
 Ask a question against all active documents:
 
@@ -188,7 +230,7 @@ curl http://localhost/ask \
 
 ---
 
-## 8. Preview a candidate version
+## 8. Preview
 
 Before activating, preview a READY version alongside the currently active
 documents:
@@ -205,7 +247,7 @@ version is included in the search scope alongside all other active documents.
 
 ---
 
-## 9. Archive a version
+## 9. Archive
 
 Archive a version to remove it from the active set:
 
@@ -224,7 +266,7 @@ Archived versions are cleaned up from the vector store by a background worker.
 
 ---
 
-## 10. Run tests
+## 10. Tests
 
 The project includes five test suites:
 
@@ -250,7 +292,7 @@ npm test
 
 ---
 
-## 11. Load testing
+## 11. Load test
 
 Run the load test suite against a running server:
 
@@ -295,7 +337,59 @@ Diagnostics automatically expire after `DIAGNOSTICS_TTL_HOURS` (default: 24).
 
 ---
 
-## 13. Backup and restore
+## 13. Annual replacement
+
+Each academic year, documents need to be updated with new versions. The
+fixture system models this through the `replacement` topic, which provides
+two versions of the same document for different academic years.
+
+### Generate new annual PDFs
+
+```bash
+npm run fixtures:generate
+```
+
+The manifest at `fixtures/corpus.manifest.json` maps each document to its
+versions. Documents with multiple versions represent the annual replacement
+workflow — for example, a `jornada` document with versions for both
+`2025-2026` and `2026-2027`.
+
+### Seed the new corpus
+
+```bash
+npm run corpus:seed
+```
+
+The seeder issues `POST /api/v1/indexing/jobs` for each PDF, then polls
+until all jobs complete. After seeding, the new versions are in the `READY`
+state.
+
+### Activate the new versions
+
+Each document's seeder activates the version marked `"activate": true` in the
+manifest. To activate a specific new version manually:
+
+```bash
+curl -X POST "http://localhost/api/v1/documents/<documentId>/versions/<newVersionId>/activate" \
+  -H "Authorization: Bearer $(grep AUTH_TOKEN .env | cut -d= -f2)"
+```
+
+The system automatically archives the previous active version for the same
+document, ensuring only one version per document is active at any time.
+
+### Verify the replacement
+
+```bash
+# Ask a question only the new version should answer
+curl http://localhost/api/v1/questions \
+  -H "Authorization: Bearer $(grep AUTH_TOKEN .env | cut -d= -f2)" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "¿Cuál es el horario del nuevo curso?"}'
+```
+
+---
+
+## 14. Ubuntu backup/restore
 
 See [docs/operations/backup-restore.md](docs/operations/backup-restore.md) for
 detailed backup and restore procedures covering:
@@ -307,19 +401,8 @@ detailed backup and restore procedures covering:
 - Point-in-time restore
 - Disaster recovery plan
 
----
-
-## 14. Production deployment
-
-See [docs/operations/ubuntu-server.md](docs/operations/ubuntu-server.md) for
-a complete deployment guide covering:
-
-- Docker installation on Ubuntu Server 24.04
-- Environment configuration
-- Firewall setup and security
-- Resource requirements
-- Troubleshooting
-- Stack updates
+For production deployment on Ubuntu Server, see
+[docs/operations/ubuntu-server.md](docs/operations/ubuntu-server.md).
 
 ---
 

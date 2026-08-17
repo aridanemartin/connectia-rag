@@ -26,12 +26,6 @@ env:
   # Node.js version — must match Dockerfile and engine requirement
   NODE_VERSION: "24"
 
-  # Qdrant version — pinned to match compose.yaml
-  QDRANT_IMAGE: "qdrant/qdrant:v1.18.3"
-
-  # Intermittent integration/E2E tests that need Docker
-  COMPOSE_FILE: "compose.yaml"
-
 jobs:
   # ── Lint ────────────────────────────────────────────────────────────────
   lint:
@@ -102,10 +96,6 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx vitest run tests/integration/ --reporter=verbose
-        env:
-          QDRANT_URL: "http://localhost:6333"
-          # Qdrant testcontainers spin up their own instance;
-          # the test suite also uses a fake Ollama server.
 
   # ── E2E tests (full stack with fake Ollama + Qdrant) ────────────────────
   e2e:
@@ -120,8 +110,6 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx vitest run tests/e2e/ --reporter=verbose
-        env:
-          QDRANT_URL: "http://localhost:6333"
 
   # ── Evaluation tests (Spanish RAG quality) ──────────────────────────────
   evaluation:
