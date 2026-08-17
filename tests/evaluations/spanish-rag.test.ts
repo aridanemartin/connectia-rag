@@ -92,7 +92,7 @@ function testConfig(ollamaUrl: string, qdrantUrl: string, collection: string) {
     MAX_QUEUED_GENERATIONS: "20",
     QUESTION_QUEUE_TIMEOUT_MS: "10000",
     RAG_TOP_K: "10",
-    RAG_SCORE_THRESHOLD: "0.0",
+    RAG_SCORE_THRESHOLD: "-1.0",
     DIAGNOSTICS_ENABLED: "false",
     DIAGNOSTICS_TTL_HOURS: "24",
     ENABLE_INTERNAL_METRICS: "false",

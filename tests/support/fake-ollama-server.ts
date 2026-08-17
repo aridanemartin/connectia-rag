@@ -35,11 +35,19 @@ function deterministicEmbedding(text: string, dimensions: number): number[] {
 
 /**
  * Decide whether the question can be answered from context.
- * Uses simple keyword overlap: if >= 30% of non-common question words appear
- * in at least one context text → found; if some overlap but contradictory →
- * ambiguous; else not_found.
+ *
+ * Uses whole-word token overlap (not substring): the question's content words
+ * are matched against the token set of each chunk's text. This avoids false
+ * positives from substrings (e.g. "fin" matching "finaliza").
+ *
+ * Classification rules:
+ *   - No matches at all → not_found
+ *   - Best match covers < 50 % of content words → not_found (too weak)
+ *   - Top chunks tie, or a runner-up from a different text is close enough
+ *     (≥ 2/3 of the best count) and the best doesn't cover every word → ambiguous
+ *   - Otherwise → found, citing the best-matching chunk(s)
  */
-function decideResponse(
+export function decideResponse(
   question: string,
   context: ReadonlyArray<{ chunkId: string; text: string }>,
 ): unknown {
@@ -81,57 +89,70 @@ function decideResponse(
     "al",
     "no",
   ]);
-  const words = question
-    .toLowerCase()
-    .split(/[\s,¿?¡!.;:()]+/)
-    .filter((w) => w.length > 2 && !stopWords.has(w));
+
+  const tokenize = (text: string): string[] =>
+    text
+      .toLowerCase()
+      .split(/[\s,¿?¡!.;:()]+/)
+      .filter((w) => w.length > 0);
+
+  const words = tokenize(question).filter(
+    (w) => w.length > 2 && !stopWords.has(w),
+  );
 
   if (words.length === 0) {
     return { status: "ambiguous", answer: null, citedChunkIds: [] };
   }
 
-  const hitCounts: { id: string; count: number }[] = [];
+  // Tokenise each chunk text into a Set for fast word-boundary lookup
+  const chunkTokens = context.map((c) => ({
+    chunkId: c.chunkId,
+    text: c.text,
+    tokens: new Set(tokenize(c.text)),
+  }));
 
-  for (const c of context) {
-    const text = c.text.toLowerCase();
-    const matchCount = words.filter((w) => text.includes(w)).length;
+  const hits: { chunkId: string; count: number }[] = [];
+
+  for (const c of chunkTokens) {
+    const matchCount = words.filter((w) => c.tokens.has(w)).length;
     if (matchCount > 0) {
-      hitCounts.push({ id: c.chunkId, count: matchCount });
+      hits.push({ chunkId: c.chunkId, count: matchCount });
     }
   }
 
-  if (hitCounts.length === 0) {
+  if (hits.length === 0) {
     return { status: "not_found", answer: null, citedChunkIds: [] };
   }
 
-  // Check for contradictory information: same words match different chunks
-  // that contain different numbers/negation
-  const contradictionIndicators = ["no ", "excepto", "salvo", "pero"];
-  const contradictions = context.filter((c) =>
-    contradictionIndicators.some((ind) => c.text.toLowerCase().includes(ind)),
-  );
+  hits.sort((a, b) => b.count - a.count);
+  const maxCount = hits[0].count;
+  const best = hits.filter((h) => h.count === maxCount);
 
-  if (contradictions.length > 0 && hitCounts.length > 1) {
+  // Minimum overlap: the best chunk must cover at least half of the
+  // question's content words to be considered answerable.
+  if (maxCount < words.length * 0.5) {
+    return { status: "not_found", answer: null, citedChunkIds: [] };
+  }
+
+  // Ambiguous if the top chunks tie.
+  if (best.length > 1) {
     return { status: "ambiguous", answer: null, citedChunkIds: [] };
   }
 
-  // Best match
-  hitCounts.sort((a, b) => b.count - a.count);
-  const maxCount = hitCounts[0].count;
-  const best = hitCounts.filter((h) => h.count === maxCount);
-
-  // If the best hit ratio is low, ambiguous
-  if (maxCount < words.length * 0.3) {
+  // Ambiguous if a runner-up is close enough (≥ 2/3 of the best count)
+  // and the best chunk doesn't cover every content word.
+  const runnerUp = hits[1]?.count ?? 0;
+  if (maxCount < words.length && runnerUp >= (2 / 3) * maxCount) {
     return { status: "ambiguous", answer: null, citedChunkIds: [] };
   }
 
-  const bestChunk = context.find((c) => c.chunkId === best[0].id);
+  const bestChunk = context.find((c) => c.chunkId === best[0].chunkId);
   const text = bestChunk?.text ?? "Información no disponible.";
 
   return {
     status: "found",
     answer: text.length > 200 ? `${text.slice(0, 200)}...` : text,
-    citedChunkIds: best.map((h) => h.id),
+    citedChunkIds: best.map((h) => h.chunkId),
   };
 }
 
@@ -266,28 +287,24 @@ export function startFakeOllamaServer(): Promise<FakeOllamaServer> {
                 (m as { role?: string }).role === "user",
             ) as { content?: string } | undefined;
 
-            const question =
+            // Parse the user message content, which the test client sends as a
+            // JSON string: { question, context }. Extract the actual question
+            // text (not the raw JSON) so the decision heuristic sees real words.
+            let question =
               typeof humanMsg?.content === "string"
                 ? humanMsg.content
                 : "pregunta desconocida";
-
-            // Extract context from system message if present
-            const _sysMsg = messages.find(
-              (m: unknown) =>
-                typeof m === "object" &&
-                m !== null &&
-                (m as { role?: string }).role === "system",
-            ) as { content?: string } | undefined;
-
-            // Parse context from the user message content (JSON string)
             let context: Array<{ chunkId: string; text: string }> = [];
             try {
               const contentData = JSON.parse(humanMsg?.content ?? "{}");
+              if (typeof contentData.question === "string") {
+                question = contentData.question;
+              }
               if (Array.isArray(contentData.context)) {
                 context = contentData.context;
               }
             } catch {
-              context = [];
+              // Plain-text user content: fall back to the raw string as question.
             }
 
             const decision = decideResponse(question, context);
