@@ -1,8 +1,8 @@
-import { fileURLToPath } from "node:url";
 import { loadConfig } from "../config/env.js";
 import { closeDatabase, openDatabase } from "../persistence/database.js";
 import { migrate } from "../persistence/migrate.js";
 import { DiagnosticsRepository } from "../persistence/repositories/diagnostics.repository.js";
+import { isDirectExecution } from "../server.js";
 import { systemClock } from "../shared/clock.js";
 import { DiagnosticsService } from "./diagnostics.service.js";
 import type { DiagnosticsCliIO } from "./diagnostics.types.js";
@@ -81,8 +81,11 @@ export async function runDiagnosticsCli(
 }
 
 if (
-  import.meta.main &&
-  fileURLToPath(import.meta.url) === fileURLToPath(process.argv[1])
+  isDirectExecution({
+    importMetaMain: import.meta.main,
+    moduleUrl: import.meta.url,
+    argvEntry: process.argv[1],
+  })
 ) {
   void runDiagnosticsCli(process.argv.slice(2), process.env).then(
     (exitCode) => {
