@@ -92,7 +92,7 @@ function testConfig(ollamaUrl: string, qdrantUrl: string, collection: string) {
     MAX_QUEUED_GENERATIONS: "20",
     QUESTION_QUEUE_TIMEOUT_MS: "10000",
     RAG_TOP_K: "10",
-    RAG_SCORE_THRESHOLD: "-1.0",
+    RAG_SCORE_THRESHOLD: "0.0",
     DIAGNOSTICS_ENABLED: "false",
     DIAGNOSTICS_TTL_HOURS: "24",
     ENABLE_INTERNAL_METRICS: "false",
@@ -106,7 +106,7 @@ function deterministicEmbedding(text: string): number[] {
   const hash = createHash("sha256").update(text).digest();
   const values: number[] = [];
   for (let i = 0; i < DIMENSIONS; i++) {
-    values.push(hash[i % hash.length] / 128 - 1);
+    values.push(hash[i % hash.length] / 255);
   }
   const magnitude = Math.sqrt(values.reduce((s, v) => s + v * v, 0));
   return magnitude > 0 ? values.map((v) => v / magnitude) : values;
