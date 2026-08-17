@@ -51,3 +51,44 @@ export async function askQuestion(req: QuestionRequest) { ... }
 3. Class definitions (including custom Error classes) may stay in implementation files OR move to `.types.ts` if they are purely structural/data types with no logic.
 4. If a type is used across multiple modules, place it in `src/shared/shared.types.ts`.
 5. Always use `import type { ... }` when importing from `.types.ts` files.
+
+## Class Documentation
+
+**Every class MUST have a TSDoc comment describing its responsibility.**
+
+- Use `/** ... */` blocks above the class declaration, not `// ...` single-line comments.
+- Include `@param`, `@returns`, and `@throws` tags where they add clarity, but keep the description concise (one to a few sentences of purpose plus tag lines).
+- Document the class's key public methods and constructor if not obvious from the name.
+
+### Example
+
+**Wrong** — undocumented class:
+```ts
+export class QuestionService {
+  constructor(private readonly deps: QuestionServiceDependencies) {}
+  async ask(question: string): Promise<QuestionResponse> { ... }
+}
+```
+
+**Correct** — TSDoc describing responsibility:
+```ts
+/**
+ * Answers grounded questions: embeds the query, searches the vector store
+ * over allowed versions, has the model decide an answer, validates citations
+ * with one repair attempt, and records diagnostics. Key method: ask(...).
+ */
+export class QuestionService {
+  constructor(private readonly deps: QuestionServiceDependencies) {}
+  async ask(question: string): Promise<QuestionResponse> { ... }
+}
+```
+
+## Folder Structure
+
+The project intentionally keeps domain-based folder grouping (e.g.
+`src/rag/question.service.ts` colocated with `src/rag/rag.types.ts`,
+`src/diagnostics/diagnostics.service.ts` colocated with
+`diagnostics.types.ts`) rather than a type-based `src/services/` folder that
+would scatter cohesive modules and fight the `.types.ts`-per-module
+convention. Do not propose a top-level `src/services/` reorg — service
+classes live in their domain modules alongside their types.
