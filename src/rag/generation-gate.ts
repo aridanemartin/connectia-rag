@@ -1,17 +1,13 @@
 import PQueue from "p-queue";
+import type { GenerationGateConfig, GenerationGateStats } from "./rag.types.js";
 
-export interface GenerationGateConfig {
-  concurrency: number;
-  maxQueued: number;
-  timeoutMs: number;
-}
+export type { GenerationGateConfig, GenerationGateStats } from "./rag.types.js";
 
-export interface GenerationGateStats {
-  active: number;
-  queued: number;
-  capacity: number;
-}
-
+/**
+ * Concurrency limiter for model generation: bounds active operations and
+ * queue depth, rejects when saturated, and times out operations that wait
+ * too long for a slot. Key methods: run(operation), stats().
+ */
 export class GenerationGate {
   private readonly queue: PQueue;
   private readonly concurrency: number;

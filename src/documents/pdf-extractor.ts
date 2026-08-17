@@ -1,5 +1,19 @@
 import { open } from "node:fs/promises";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import type {
+  ExtractedPage,
+  LoadedPdfDocument,
+  PdfDocumentLoader,
+  PdfProcessingErrorCode,
+} from "./document.types.js";
+
+export type {
+  ExtractedPage,
+  LoadedPdfDocument,
+  PdfDocumentLoader,
+  PdfLoaderFactory,
+  PdfProcessingErrorCode,
+} from "./document.types.js";
 
 const PDF_MAGIC = Buffer.from("%PDF-", "ascii");
 const BYTE_ORDER_MARK = "\uFEFF";
@@ -13,30 +27,6 @@ const CONTROL_OR_FORMAT_CHARACTER = /[\p{Cc}\p{Cf}]/u;
  */
 export const MIN_EXTRACTED_CHARACTERS = 20;
 
-export interface ExtractedPage {
-  page: number;
-  text: string;
-}
-
-interface LoadedPdfDocument {
-  pageContent: unknown;
-  metadata: unknown;
-}
-
-export interface PdfDocumentLoader {
-  load(): Promise<readonly LoadedPdfDocument[]>;
-}
-
-export type PdfLoaderFactory = (path: string) => PdfDocumentLoader;
-
-export type PdfProcessingErrorCode =
-  | "PDF_SIGNATURE_INVALID"
-  | "PDF_CORRUPT"
-  | "PDF_ENCRYPTED"
-  | "PDF_PARSE_FAILED"
-  | "PDF_METADATA_INVALID"
-  | "PDF_TEXT_NOT_FOUND";
-
 const SAFE_ERROR_MESSAGES: Record<PdfProcessingErrorCode, string> = {
   PDF_SIGNATURE_INVALID: "El archivo no tiene una firma PDF válida.",
   PDF_CORRUPT: "El PDF está dañado y no se puede procesar.",
@@ -46,6 +36,10 @@ const SAFE_ERROR_MESSAGES: Record<PdfProcessingErrorCode, string> = {
   PDF_TEXT_NOT_FOUND: "El PDF no contiene suficiente texto extraíble.",
 };
 
+/**
+ * Thrown when a PDF cannot be processed (corrupt, encrypted, missing text,
+ * etc.). The code identifies the specific failure category.
+ */
 export class PdfProcessingError extends Error {
   constructor(readonly code: PdfProcessingErrorCode) {
     super(SAFE_ERROR_MESSAGES[code]);
@@ -164,6 +158,11 @@ function countExtractableCodePoints(pages: readonly ExtractedPage[]): number {
   ).length;
 }
 
+/**
+ * Extracts per-page text from a PDF file: verifies the PDF magic header,
+ * delegates parsing to a pluggable loader, validates page metadata, and
+ * normalizes the extracted text. Key method: extract(path).
+ */
 export class PdfExtractor {
   constructor(private readonly loaderFactory = defaultLoaderFactory) {}
 

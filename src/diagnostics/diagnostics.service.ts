@@ -8,6 +8,11 @@ import type {
   DiagnosticsServiceOptions,
 } from "./diagnostics.types.js";
 
+/**
+ * Records and manages opt-in diagnostics entries with a TTL: stores
+ * question/answer records, purges expired entries, and lists recent ones.
+ * Key methods: record, purgeExpired, listRecent.
+ */
 export class DiagnosticsService implements DiagnosticsRecorder {
   private readonly repository: DiagnosticsRepository;
   private readonly enabled: boolean;

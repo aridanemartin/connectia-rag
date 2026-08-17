@@ -18,4 +18,4 @@ export const answerDecisionSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-export type AnswerDecision = z.infer<typeof answerDecisionSchema>;
+export type { AnswerDecision } from "./rag.types.js";

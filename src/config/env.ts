@@ -1,11 +1,12 @@
 import { z } from "zod";
+import type { AppConfig } from "./config.types.js";
 
 const booleanFromEnvironment = z
   .enum(["true", "false"])
   .default("false")
   .transform((value) => value === "true");
 
-const envSchema = z.object({
+export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.string().default("info"),
   AUTH_TOKEN: z.string().min(32),
@@ -37,7 +38,7 @@ const envSchema = z.object({
   INDEXING_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1_000),
 });
 
-export type AppConfig = z.infer<typeof envSchema>;
+export type { AppConfig };
 
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   return envSchema.parse(env);

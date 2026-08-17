@@ -16,21 +16,20 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Request } from "express";
 import type multer from "multer";
 import type { ActivityTracker } from "../shared/activity-tracker.js";
+import type { UploadFailureReporter, UploadUnlink } from "./document.types.js";
+
+export type {
+  UploadFailureReport,
+  UploadFailureReporter,
+  UploadUnlink,
+} from "./document.types.js";
 
 export const SERVER_UPLOAD_FILENAME_PATTERN =
   /^connectia-upload-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$/u;
 
-export type UploadUnlink = (path: string) => Promise<void>;
-
-export interface UploadFailureReport {
-  code: "UPLOAD_CLEANUP_FAILED";
-  phase: "terminal_cleanup";
-}
-
-export type UploadFailureReporter = (
-  report: Readonly<UploadFailureReport>,
-) => void | Promise<void>;
-
+/**
+ * Thrown when the secure upload directory cannot be prepared or verified.
+ */
 export class UploadStorageError extends Error {
   constructor() {
     super("Upload storage is unavailable");
@@ -38,6 +37,10 @@ export class UploadStorageError extends Error {
   }
 }
 
+/**
+ * Thrown when a temporary upload file cannot be cleaned up after failures
+ * or terminal request outcomes.
+ */
 export class UploadCleanupError extends Error {
   constructor() {
     super("Upload cleanup failed");
@@ -73,6 +76,10 @@ export function secureUploadDirectory(path: string): string {
   }
 }
 
+/**
+ * Retries file deletion up to a configurable number of attempts with
+ * exponential back-off. Used to clean up temporary upload files.
+ */
 export class RetryingUploadCleaner {
   constructor(
     private readonly unlinkFile: UploadUnlink = unlink,
@@ -102,6 +109,11 @@ export class RetryingUploadCleaner {
   }
 }
 
+/**
+ * Multer storage engine that writes uploaded files to a hardened directory,
+ * guards against symlink attacks, and cleans up partial files on request
+ * abort or error. Key methods: _handleFile, _removeFile.
+ */
 export class SecureUploadStorage implements multer.StorageEngine {
   constructor(
     private readonly directory: string,

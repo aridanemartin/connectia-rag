@@ -1,3 +1,7 @@
+/**
+ * Thrown when new activity is registered after the tracker has stopped
+ * accepting work (e.g. during shutdown).
+ */
 export class ActivityNotAcceptedError extends Error {
   constructor() {
     super("Application activity is no longer accepted");
@@ -5,6 +9,11 @@ export class ActivityNotAcceptedError extends Error {
   }
 }
 
+/**
+ * Tracks in-flight application activity so graceful shutdown can drain work
+ * before closing dependencies. Exposes a shared abort signal and lets callers
+ * begin/end work or run operations until idle.
+ */
 export class ActivityTracker {
   private readonly controller = new AbortController();
   private readonly idleWaiters = new Set<() => void>();

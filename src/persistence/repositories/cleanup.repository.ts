@@ -1,37 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { PersistenceNotFoundError } from "../../documents/document.types.js";
-import type { Clock } from "../../shared/clock.js";
-import type { DatabaseConnection } from "../database.js";
+import type { Clock } from "../../shared/shared.types.js";
+import type {
+  CleanupJob,
+  CleanupJobRow,
+  DatabaseConnection,
+} from "../persistence.types.js";
 
-export type CleanupJobStatus = "queued" | "processing";
-
-export interface CleanupJob {
-  id: string;
-  versionId: string;
-  status: CleanupJobStatus;
-  attempts: number;
-  availableAt: string;
-  leaseOwner: string | null;
-  leaseUntil: string | null;
-  errorCode: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface CleanupJobRow {
-  id: string;
-  version_id: string;
-  status: CleanupJobStatus;
-  attempts: number;
-  available_at: string;
-  lease_owner: string | null;
-  lease_until: string | null;
-  error_code: string | null;
-  error_message: string | null;
-  created_at: string;
-  updated_at: string;
-}
+export type {
+  CleanupJob,
+  CleanupJobRow,
+  CleanupJobStatus,
+} from "../persistence.types.js";
 
 function toCleanupJob(row: CleanupJobRow): CleanupJob {
   return {
@@ -63,6 +43,12 @@ function safeErrorMessage(message: string): string {
     .slice(0, 500);
 }
 
+/**
+ * Sqlite repository for vector-cleanup jobs: enqueues work, leases the next
+ * available job with an owner and expiry, records retries, completes or
+ * recovers expired leases. Key methods: enqueue, leaseNext, retry, complete,
+ * recoverExpired.
+ */
 export class CleanupRepository {
   constructor(
     private readonly database: DatabaseConnection,
@@ -226,6 +212,10 @@ export class CleanupRepository {
   }
 }
 
+/**
+ * Thrown when an operation requires an active lease but the lease has been
+ * lost (expired or claimed by another owner).
+ */
 class LeaseLostError extends Error {
   constructor(jobId: string, owner: string) {
     super(`Cleanup job ${jobId} does not have an active lease for ${owner}`);

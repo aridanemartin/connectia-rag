@@ -1,8 +1,6 @@
-import type {
-  DiagnosticEntry,
-  DiagnosticsRepository,
-} from "../persistence/repositories/diagnostics.repository.js";
-import type { Clock } from "../shared/clock.js";
+import type { DiagnosticEntry } from "../persistence/persistence.types.js";
+import type { DiagnosticsRepository } from "../persistence/repositories/diagnostics.repository.js";
+import type { Clock } from "../shared/shared.types.js";
 
 export interface DiagnosticRecordInput {
   requestId: string;

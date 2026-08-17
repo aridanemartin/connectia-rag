@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
+import type { DatabaseConnection } from "./persistence.types.js";
 
-export type DatabaseConnection = Database.Database;
+export type { DatabaseConnection } from "./persistence.types.js";
 
 export function openDatabase(path: string): DatabaseConnection {
   const database = new Database(path);
