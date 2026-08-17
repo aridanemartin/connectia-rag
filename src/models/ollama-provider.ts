@@ -11,6 +11,25 @@ import type {
 
 export type { ChatBoundary, EmbeddingsBoundary, OllamaProviderDependencies };
 
+/**
+ * Extracts a JSON value from a chat model's raw text response.
+ *
+ * Chat models routinely wrap JSON in a Markdown code fence (```json ... ```)
+ * even when instructed to return only the JSON body. Strips a single
+ * surrounding fence if present, then parses. Returns the original string
+ * unchanged when it isn't valid JSON, so the caller's schema validation
+ * fails with its own typed error instead of a raw SyntaxError.
+ */
+function parseModelJson(content: string): unknown {
+  const fenced = content.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = fenced ? fenced[1] : content.trim();
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return content;
+  }
+}
+
 function unavailableHealth(): ModelHealth {
   return {
     ollama: false,
@@ -164,7 +183,8 @@ export class OllamaProvider implements ModelProvider {
     ]);
 
     if (typeof result === "object" && result !== null && "content" in result) {
-      return result.content;
+      const { content } = result;
+      return typeof content === "string" ? parseModelJson(content) : content;
     }
     return result;
   }

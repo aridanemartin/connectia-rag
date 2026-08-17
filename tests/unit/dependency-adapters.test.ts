@@ -410,4 +410,99 @@ describe("OllamaProvider", () => {
     });
     expect(JSON.stringify(health)).not.toContain("secret");
   });
+
+  it("parses a clean JSON decision returned as chat message text", async () => {
+    const provider = new OllamaProvider(config, {
+      fetch: vi.fn(),
+      chat: {
+        invoke: vi.fn().mockResolvedValue({
+          content:
+            '{"status":"found","answer":"Del 1 al 15 de septiembre.","citedChunkIds":["chunk-1"]}',
+        }),
+      },
+      embeddings: { embedDocuments: vi.fn(), embedQuery: vi.fn() },
+    });
+
+    const decision = await provider.decide({
+      system: "system prompt",
+      question: "¿Cuál es el plazo?",
+      context: [],
+    });
+
+    expect(decision).toEqual({
+      status: "found",
+      answer: "Del 1 al 15 de septiembre.",
+      citedChunkIds: ["chunk-1"],
+    });
+  });
+
+  it("parses a JSON decision wrapped in a Markdown code fence", async () => {
+    const provider = new OllamaProvider(config, {
+      fetch: vi.fn(),
+      chat: {
+        invoke: vi.fn().mockResolvedValue({
+          content:
+            '```json\n{"status":"not_found","answer":null,"citedChunkIds":[]}\n```',
+        }),
+      },
+      embeddings: { embedDocuments: vi.fn(), embedQuery: vi.fn() },
+    });
+
+    const decision = await provider.decide({
+      system: "system prompt",
+      question: "¿Cuál es el plazo?",
+      context: [],
+    });
+
+    expect(decision).toEqual({
+      status: "not_found",
+      answer: null,
+      citedChunkIds: [],
+    });
+  });
+
+  it("parses a JSON decision wrapped in an unlabeled code fence", async () => {
+    const provider = new OllamaProvider(config, {
+      fetch: vi.fn(),
+      chat: {
+        invoke: vi.fn().mockResolvedValue({
+          content:
+            '```\n{"status":"ambiguous","answer":null,"citedChunkIds":[]}\n```',
+        }),
+      },
+      embeddings: { embedDocuments: vi.fn(), embedQuery: vi.fn() },
+    });
+
+    const decision = await provider.decide({
+      system: "system prompt",
+      question: "¿Cuál es el plazo?",
+      context: [],
+    });
+
+    expect(decision).toEqual({
+      status: "ambiguous",
+      answer: null,
+      citedChunkIds: [],
+    });
+  });
+
+  it("returns the raw text unchanged when the model does not return valid JSON", async () => {
+    const provider = new OllamaProvider(config, {
+      fetch: vi.fn(),
+      chat: {
+        invoke: vi.fn().mockResolvedValue({
+          content: "Lo siento, no puedo responder a esa pregunta.",
+        }),
+      },
+      embeddings: { embedDocuments: vi.fn(), embedQuery: vi.fn() },
+    });
+
+    const decision = await provider.decide({
+      system: "system prompt",
+      question: "¿Cuál es el plazo?",
+      context: [],
+    });
+
+    expect(decision).toBe("Lo siento, no puedo responder a esa pregunta.");
+  });
 });
