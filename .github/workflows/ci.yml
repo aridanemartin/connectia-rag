@@ -1,0 +1,147 @@
+# ──────────────────────────────────────────────────────────────────────────
+# .github/workflows/ci.yml  —  CI pipeline for Connectia RAG
+#
+# Pipeline stages:
+#   1. Lint (Biome)
+#   2. Type-check (tsc --noEmit)
+#   3. Unit tests (fast, no external dependencies)
+#   4. Contract tests (API shape, compose config)
+#   5. Integration tests (Qdrant testcontainers, fake Ollama)
+#   6. E2E tests (full stack with fake Ollama + Qdrant)
+#   7. Evaluation tests (Spanish RAG quality)
+#   8. Docker build (production image)
+#
+# Secrets: none — AUTH_TOKEN is a test-only value.
+# ──────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  # Node.js version — must match Dockerfile and engine requirement
+  NODE_VERSION: "24"
+
+  # Qdrant version — pinned to match compose.yaml
+  QDRANT_IMAGE: "qdrant/qdrant:v1.18.3"
+
+  # Intermittent integration/E2E tests that need Docker
+  COMPOSE_FILE: "compose.yaml"
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+
+  # ── Type-check ──────────────────────────────────────────────────────────
+  typecheck:
+    name: Type-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npm run typecheck
+
+  # ── Unit tests (fast, no external dependencies) ─────────────────────────
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run tests/unit/ --reporter=verbose
+
+  # ── Contract tests (API shape, compose config, documentation) ───────────
+  contract:
+    name: Contract tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run tests/contract/ --reporter=verbose
+
+  # ── Integration tests (Qdrant testcontainers, fake Ollama) ──────────────
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run tests/integration/ --reporter=verbose
+        env:
+          QDRANT_URL: "http://localhost:6333"
+          # Qdrant testcontainers spin up their own instance;
+          # the test suite also uses a fake Ollama server.
+
+  # ── E2E tests (full stack with fake Ollama + Qdrant) ────────────────────
+  e2e:
+    name: E2E tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run tests/e2e/ --reporter=verbose
+        env:
+          QDRANT_URL: "http://localhost:6333"
+
+  # ── Evaluation tests (Spanish RAG quality) ──────────────────────────────
+  evaluation:
+    name: Evaluation tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - run: npm ci
+      - run: npx vitest run tests/evaluations/ --reporter=verbose
+
+  # ── Docker build (production image) ─────────────────────────────────────
+  docker:
+    name: Docker build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target runner --tag connectia-rag-api:ci .
