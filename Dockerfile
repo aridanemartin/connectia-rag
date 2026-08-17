@@ -9,6 +9,10 @@ WORKDIR /app
 
 # Install ALL dependencies (including dev: tsx, typescript, etc.)
 COPY package.json package-lock.json .npmrc ./
+# better-sqlite3 compiles a native addon via node-gyp → needs build toolchain
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 RUN npm ci
 
 # Compile TypeScript → dist/
@@ -27,6 +31,10 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package.json package-lock.json .npmrc ./
+# --omit=dev still compiles production native addons (better-sqlite3) via node-gyp
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy compiled output and scripts from builder
@@ -60,6 +68,10 @@ FROM node:24.17.0-bookworm-slim AS dev
 WORKDIR /app
 
 COPY package.json package-lock.json .npmrc ./
+# better-sqlite3 compiles a native addon via node-gyp → needs build toolchain
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 RUN npm ci
 
 COPY tsconfig.json ./

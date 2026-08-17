@@ -4,6 +4,9 @@
  *
  * These tests require Docker to be available on the host.
  * They are tagged with `--test integration` in the test runner config.
+ *
+ * NOTE: Qdrant only accepts point IDs that are unsigned integers or UUIDs.
+ * All fixture point IDs below are therefore fixed, deterministic UUIDs.
  */
 
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -15,6 +18,16 @@ import {
 } from "../support/qdrant-test-context.js";
 
 const DIMENSIONS = 128;
+
+// Fixed, deterministic UUID point IDs (Qdrant rejects non-UUID/unsigned-int IDs)
+const POINT_ID_SEARCH = "00000000-0000-4000-8000-0000000000a1";
+const POINT_ID_V1 = "00000000-0000-4000-8000-0000000000a2";
+const POINT_ID_V2 = "00000000-0000-4000-8000-0000000000a3";
+const POINT_ID_P1 = "00000000-0000-4000-8000-0000000000a4";
+const POINT_ID_DELETE_1 = "00000000-0000-4000-8000-0000000000a5";
+const POINT_ID_DELETE_2 = "00000000-0000-4000-8000-0000000000a6";
+const POINT_ID_CLOSE = "00000000-0000-4000-8000-0000000000a7";
+const POINT_ID_FAR = "00000000-0000-4000-8000-0000000000a8";
 
 function testConfig(
   qdrantUrl: string,
@@ -117,7 +130,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
 
     const vId = "integration-version-1";
     const point = makePoint(
-      "search-test-point",
+      POINT_ID_SEARCH,
       vId,
       "Texto sobre matrícula escolar.",
     );
@@ -127,7 +140,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     const results = await store.search(point.vector, [vId], 10, 0.0);
 
     expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results[0].id).toBe("search-test-point");
+    expect(results[0].id).toBe(POINT_ID_SEARCH);
     expect(results[0].payload.text).toBe("Texto sobre matrícula escolar.");
   }, 60_000);
 
@@ -145,10 +158,10 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     const v1 = "version-allowed";
     const v2 = "version-blocked";
     await store.upsert([
-      makePoint("point-v1", v1, "Texto permitido.", {
+      makePoint(POINT_ID_V1, v1, "Texto permitido.", {
         documentId: "doc-allowed",
       }),
-      makePoint("point-v2", v2, "Texto bloqueado.", {
+      makePoint(POINT_ID_V2, v2, "Texto bloqueado.", {
         documentId: "doc-blocked",
       }),
     ]);
@@ -162,8 +175,8 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     );
 
     const ids = results.map((r) => r.id);
-    expect(ids).toContain("point-v1");
-    expect(ids).not.toContain("point-v2");
+    expect(ids).toContain(POINT_ID_V1);
+    expect(ids).not.toContain(POINT_ID_V2);
   }, 60_000);
 
   it("returns empty results for version filter with no matches", async () => {
@@ -177,7 +190,9 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     );
     await store.ensureCollection(DIMENSIONS);
 
-    await store.upsert([makePoint("p1", "v-present", "Texto presente.")]);
+    await store.upsert([
+      makePoint(POINT_ID_P1, "v-present", "Texto presente."),
+    ]);
 
     const results = await store.search(
       new Array(DIMENSIONS).fill(0.01),
@@ -202,8 +217,8 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
 
     const vId = "version-to-delete";
     await store.upsert([
-      makePoint("delete-me-1", vId, "Texto a eliminar 1."),
-      makePoint("delete-me-2", vId, "Texto a eliminar 2."),
+      makePoint(POINT_ID_DELETE_1, vId, "Texto a eliminar 1."),
+      makePoint(POINT_ID_DELETE_2, vId, "Texto a eliminar 2."),
     ]);
 
     await store.deleteVersion(vId);
@@ -238,7 +253,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
 
     await store.upsert([
       {
-        id: "close-point",
+        id: POINT_ID_CLOSE,
         vector: closeVector,
         payload: {
           documentId: "doc-scores",
@@ -253,7 +268,7 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
         },
       },
       {
-        id: "far-point",
+        id: POINT_ID_FAR,
         vector: farVector,
         payload: {
           documentId: "doc-scores",
@@ -276,6 +291,6 @@ describeMaybe("QdrantVectorStore (real Qdrant via Testcontainers)", () => {
     expect(results.length).toBe(2);
     // The close point should have a higher score
     expect(results[0].score).toBeGreaterThanOrEqual(results[1].score);
-    expect(results[0].id).toBe("close-point");
+    expect(results[0].id).toBe(POINT_ID_CLOSE);
   }, 60_000);
 });
