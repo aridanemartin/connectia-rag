@@ -1,0 +1,19 @@
+meta {
+  name: Swagger UI
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/docs
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: text/html
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

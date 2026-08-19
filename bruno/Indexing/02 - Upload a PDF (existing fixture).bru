@@ -1,0 +1,28 @@
+meta {
+  name: Upload a PDF (existing fixture)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/indexing/jobs
+  body: multipartForm
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+  Idempotency-Key: bruno-reindex-matricula-2026-2027-v1
+}
+
+body:multipart-form {
+  documentId: {{documentId}}
+  versionId: {{versionId}}
+  title: Matrícula 2026-2027
+  academicYear: 2026-2027
+  file: @file(../fixtures/pdfs/matricula-2026-2027.pdf)
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

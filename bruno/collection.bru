@@ -1,0 +1,24 @@
+vars:pre-request {
+  @description('''Base URL of the Connectia RAG API (local development).''')
+  baseUrl: http://localhost:3000
+
+  @description('''AUTH_TOKEN from the project .env file (min 32 characters).''')
+  authToken: replace-with-a-secret-token-of-at-least-32-characters
+
+  @description('''Fixture documentId from the seeded corpus (Matrícula).''')
+  documentId: 00000000-0000-4000-8000-000000000001
+
+  @description('''Fixture versionId from the seeded corpus (Matrícula 2026-2027).''')
+  versionId: 00000000-0000-4000-8000-100000000001
+
+  @description('''Id of an indexing job — copy the jobId returned by POST /api/v1/indexing/jobs.''')
+  jobId: 00000000-0000-4000-8000-200000000001
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

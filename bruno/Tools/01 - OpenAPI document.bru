@@ -1,0 +1,19 @@
+meta {
+  name: OpenAPI document
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/openapi.json
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

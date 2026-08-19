@@ -51,8 +51,8 @@ docker compose version
 ## 2. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/connectia-rag-demo.git
-cd connectia-rag-demo
+git clone https://github.com/aridanemartin/connectia-rag.git
+cd connectia-rag
 ```
 
 ---

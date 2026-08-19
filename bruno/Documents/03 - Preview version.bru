@@ -1,0 +1,26 @@
+meta {
+  name: Preview version
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/documents/{{documentId}}/versions/{{versionId}}/preview
+  body: json
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "question": "¿Cuál es el plazo de matrícula?"
+  }
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

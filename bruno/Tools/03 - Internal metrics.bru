@@ -1,0 +1,19 @@
+meta {
+  name: Internal metrics
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/internal/metrics
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

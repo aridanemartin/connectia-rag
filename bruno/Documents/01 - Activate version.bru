@@ -1,0 +1,19 @@
+meta {
+  name: Activate version
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/documents/{{documentId}}/versions/{{versionId}}/activate
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

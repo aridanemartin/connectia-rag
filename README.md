@@ -1,4 +1,4 @@
-# connectia-rag-demo
+# connectia-rag
 
 Teacher-owned, Spanish-only RAG service for the Connectia course project. The
 service is designed for Node.js and TypeScript with LangChain, Ollama, Qdrant,
@@ -19,8 +19,8 @@ docker compose version
 node --version   # 24.x required
 
 # Clone the repository
-git clone https://github.com/your-org/connectia-rag-demo.git
-cd connectia-rag-demo
+git clone https://github.com/aridanemartin/connectia-rag.git
+cd connectia-rag
 ```
 
 ---

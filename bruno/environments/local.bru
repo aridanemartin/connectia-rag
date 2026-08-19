@@ -1,0 +1,16 @@
+vars {
+  @description('''Base URL of the Connectia RAG API (local development).''')
+  baseUrl: http://localhost:3000
+
+  @description('''AUTH_TOKEN from the project .env file.''')
+  authToken: replace-with-a-secret-token-of-at-least-32-characters
+
+  @description('''Fixture documentId (Matrícula).''')
+  documentId: 00000000-0000-4000-8000-000000000001
+
+  @description('''Fixture versionId (Matrícula 2026-2027).''')
+  versionId: 00000000-0000-4000-8000-100000000001
+
+  @description('''Indexing job id returned by POST /api/v1/indexing/jobs.''')
+  jobId: 00000000-0000-4000-8000-200000000001
+}
