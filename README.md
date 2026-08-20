@@ -215,19 +215,6 @@ Response:
 }
 ```
 
-### Legacy compatibility API
-
-Legacy clients can use the `/ask` endpoint (see
-[docs/api/compatibility.md](docs/api/compatibility.md) for the full migration
-guide):
-
-```bash
-curl http://localhost/ask \
-  -H "Authorization: Bearer $(grep AUTH_TOKEN .env | cut -d= -f2)" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "¿Cuál es el plazo de matrícula?"}'
-```
-
 ---
 
 ## 8. Preview
@@ -426,8 +413,7 @@ For production deployment on Ubuntu Server, see
               └───────┘ └──────┘ └──────────┘
 ```
 
-- **API**: Express.js server with canonical (`/api/v1/`) and legacy
-  compatibility routes
+- **API**: Express.js server exposing `/api/v1/` routes
 - **Qdrant**: Vector database for semantic search over document chunks
 - **SQLite**: Application state — documents, versions, jobs, diagnostics
 - **Ollama**: Local LLM inference (`gemma3:12b`) and embeddings
@@ -450,17 +436,6 @@ For production deployment on Ubuntu Server, see
 | `POST` | `/api/v1/questions` | Yes | Ask a question |
 | `GET` | `/openapi.json` | Yes | OpenAPI specification |
 | `GET` | `/docs` | Yes | Swagger UI |
-
-### Legacy compatibility endpoints
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/health` | No | Simple liveness (legacy) |
-| `POST` | `/ask` | Yes | Legacy question answering |
-| `GET` | `/api/v1/admin/jobs/:id/status` | Yes | Legacy job status |
-
-See [docs/api/compatibility.md](docs/api/compatibility.md) for the migration
-guide.
 
 ---
 
@@ -497,7 +472,6 @@ guide.
 │   ├── load/                 # Load testing (autocannon)
 │   └── support/              # Test helpers
 ├── docs/
-│   ├── api/compatibility.md  # Legacy API documentation
 │   ├── operations/
 │   │   ├── ubuntu-server.md  # Production deployment guide
 │   │   └── backup-restore.md # Backup and restore procedures

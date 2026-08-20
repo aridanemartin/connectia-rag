@@ -62,32 +62,6 @@ describe("E2E: Failure recovery", () => {
     await fakeOllama.stop();
   });
 
-  it("health endpoint returns 200 even without downstream dependencies", async () => {
-    const config = testConfig("http://localhost:19999"); // unreachable
-    const app = createApp({
-      config,
-      logger: pino({ level: "silent" }),
-      readiness: {
-        check: async () => ({
-          status: "not_ready",
-          dependencies: {
-            sqlite: "not_ready",
-            qdrant: "not_ready",
-            collection: "not_ready",
-            ollama: "not_ready",
-            chatModel: "not_ready",
-            embeddingModel: "not_ready",
-            embeddingDimensions: "not_ready",
-          },
-        }),
-      },
-    });
-
-    const response = await request(app).get("/health");
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe("ok");
-  });
-
   it("health live endpoint always returns 200", async () => {
     const config = testConfig("http://localhost:19999");
     const app = createApp({
@@ -226,7 +200,7 @@ describe("E2E: Failure recovery", () => {
 
     it("is mounted AFTER the auth middleware (not public)", async () => {
       // Verify the route ordering by checking that /internal/* is behind auth
-      // while /health is not
+      // while /health/live is not
       const config = testConfig(fakeOllama.url, true);
       const app = createApp({
         config,
@@ -234,7 +208,7 @@ describe("E2E: Failure recovery", () => {
       });
 
       // Public health endpoint should work without auth
-      const healthResponse = await request(app).get("/health");
+      const healthResponse = await request(app).get("/health/live");
       expect(healthResponse.status).toBe(200);
 
       // Internal metrics must require auth

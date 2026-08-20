@@ -20,7 +20,6 @@ Full collection of calls against the Connectia RAG API (Express, port 3000).
 |---|---|---|
 | **Health** | Liveness | `GET /health/live` (no auth) |
 | | Readiness | `GET /health/ready` (no auth) |
-| | Legacy liveness | `GET /health` (no auth) |
 | **Questions** | Ask a question | `POST /api/v1/questions` |
 | | Ask without coverage | `POST /api/v1/questions` (returns `not_found`) |
 | **Indexing** | Upload a PDF (new document) | `POST /api/v1/indexing/jobs` (multipart, dynamic UUIDs) |
@@ -29,9 +28,6 @@ Full collection of calls against the Connectia RAG API (Express, port 3000).
 | **Documents** | Activate version | `POST /api/v1/documents/:documentId/versions/:versionId/activate` |
 | | Archive version | `POST /api/v1/documents/:documentId/versions/:versionId/archive` |
 | | Preview version | `POST /api/v1/documents/:documentId/versions/:versionId/preview` |
-| **Compatibility** | Legacy ask | `POST /ask` |
-| | Legacy ask (filtered) | `POST /ask` with `documentIds` |
-| | Legacy job status | `GET /api/v1/admin/jobs/:id/status` |
 | **Tools** | OpenAPI document | `GET /openapi.json` |
 | | Swagger UI | `GET /docs` |
 | | Internal metrics | `GET /internal/metrics` (only when `ENABLE_INTERNAL_METRICS=true`) |

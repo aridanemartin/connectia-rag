@@ -38,17 +38,6 @@ openApiRegistry.registerPath({
 });
 
 openApiRegistry.registerPath({
-  method: "get",
-  path: "/health",
-  security: [],
-  responses: {
-    200: {
-      description: "Compatibilidad: estado compacto del servicio.",
-    },
-  },
-});
-
-openApiRegistry.registerPath({
   method: "post",
   path: "/api/v1/questions",
   responses: {
@@ -73,29 +62,6 @@ openApiRegistry.registerPath({
     },
     409: {
       description: "La versión no se puede previsualizar.",
-    },
-  },
-});
-
-openApiRegistry.registerPath({
-  method: "post",
-  path: "/ask",
-  responses: {
-    200: {
-      description: "Respuesta compatible con el contrato antiguo.",
-    },
-  },
-});
-
-openApiRegistry.registerPath({
-  method: "get",
-  path: "/api/v1/admin/jobs/{id}/status",
-  responses: {
-    200: {
-      description: "Estado del trabajo en el formato externo.",
-    },
-    404: {
-      description: "Trabajo no encontrado.",
     },
   },
 });

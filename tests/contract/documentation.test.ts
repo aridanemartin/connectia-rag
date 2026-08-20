@@ -7,10 +7,8 @@ const PROJECT_ROOT = resolve(process.cwd());
 // ── Paths ─────────────────────────────────────────────────────────────────
 
 const DOCS_DIR = resolve(PROJECT_ROOT, "docs");
-const API_DOCS = resolve(DOCS_DIR, "api");
 const OPERATIONS_DOCS = resolve(DOCS_DIR, "operations");
 const README_PATH = resolve(PROJECT_ROOT, "README.md");
-const COMPATIBILITY_PATH = resolve(API_DOCS, "compatibility.md");
 const UBUNTU_SERVER_PATH = resolve(OPERATIONS_DOCS, "ubuntu-server.md");
 const BACKUP_RESTORE_PATH = resolve(OPERATIONS_DOCS, "backup-restore.md");
 const CI_PATH = resolve(PROJECT_ROOT, ".github/workflows/ci.yml");
@@ -26,10 +24,6 @@ function readFile(path: string): string {
 describe("Documentation files exist", () => {
   it("README.md exists", () => {
     expect(existsSync(README_PATH)).toBe(true);
-  });
-
-  it("docs/api/compatibility.md exists", () => {
-    expect(existsSync(COMPATIBILITY_PATH)).toBe(true);
   });
 
   it("docs/operations/ubuntu-server.md exists", () => {
@@ -108,42 +102,6 @@ describe("README.md — 14 numbered procedures", () => {
 
   it("contains procedure 14 — Ubuntu backup/restore", () => {
     expect(readme).toMatch(/## 14\.\s*Ubuntu backup\/restore/i);
-  });
-
-  it("mentions the compatibility API migration path", () => {
-    expect(readme).toMatch(/compatibility/i);
-  });
-
-  it("mentions docs/api/compatibility.md", () => {
-    expect(readme).toMatch(/docs\/api\/compatibility\.md/);
-  });
-});
-
-// ── docs/api/compatibility.md ─────────────────────────────────────────────
-
-describe("docs/api/compatibility.md", () => {
-  const doc = existsSync(COMPATIBILITY_PATH)
-    ? readFile(COMPATIBILITY_PATH)
-    : "";
-
-  it("documents the GET /health endpoint", () => {
-    expect(doc).toMatch(/GET.*\/health/);
-  });
-
-  it("documents the POST /ask endpoint", () => {
-    expect(doc).toMatch(/POST.*\/ask/);
-  });
-
-  it("documents the GET /api/v1/admin/jobs/:id/status endpoint", () => {
-    expect(doc).toMatch(/admin.*jobs.*status/);
-  });
-
-  it("includes a migration guide table", () => {
-    expect(doc).toMatch(/\|.*Legacy.*\|.*Canonical.*\|/);
-  });
-
-  it("documents the authentication requirement", () => {
-    expect(doc).toMatch(/Bearer|Authentication|auth/i);
   });
 });
 
